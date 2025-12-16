@@ -9,6 +9,7 @@ from dash import Dash, Input, Output, State, html, no_update
 from dotenv import load_dotenv
 
 from ..dropdowns import options_from_series
+from ..snapshots import build_snapshot_options
 from ..data_sources import (
     DEFAULT_ACCEPTANCE_TABLE,
     load_dataset_from_source,
@@ -402,8 +403,8 @@ def register_acceptance_callbacks(app: Dash) -> None:
             & (pd.to_datetime(dataset["travel_date"]).dt.date == travel_date_dt)
             & (dataset["upgrade_type"] == upgrade)
         )
-        snapshots = dataset.loc[mask, "snapshot_num"].astype(str)
-        options = options_from_series(snapshots)
+        snapshots = dataset.loc[mask, "snapshot_num"]
+        options = build_snapshot_options(snapshots)
         return options, options[0]["value"] if options else None
 
     @app.callback(

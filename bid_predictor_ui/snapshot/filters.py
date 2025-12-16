@@ -11,6 +11,7 @@ from dash.exceptions import PreventUpdate
 
 from ..data import load_dataset_cached
 from ..dropdowns import choose_dropdown_value, options_from_series
+from ..snapshots import build_snapshot_options
 
 
 def register_filter_callbacks(app: Dash) -> None:
@@ -212,12 +213,8 @@ def register_filter_callbacks(app: Dash) -> None:
             & (pd.to_datetime(dataset["travel_date"]).dt.date == travel_date_dt)
             & (dataset["upgrade_type"] == upgrade_type)
         )
-        snapshots = (
-            dataset.loc[mask, "snapshot_num"].dropna().drop_duplicates().sort_values()
-        )
-        options = [
-            {"label": f"Snapshot {snap}", "value": str(snap)} for snap in snapshots
-        ]
+        snapshots = dataset.loc[mask, "snapshot_num"]
+        options = build_snapshot_options(snapshots)
         value = options[0]["value"] if options else None
         return options, value
 
