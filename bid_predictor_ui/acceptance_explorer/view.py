@@ -1,26 +1,24 @@
 """Callbacks and helpers for the acceptance probability explorer tab."""
 from __future__ import annotations
 
-import os
-import re
-from contextlib import closing
 from copy import deepcopy
-from functools import lru_cache
-from pathlib import Path, PurePosixPath
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence
 
 import pandas as pd
-import psycopg2
 from dash import Dash, Input, Output, State, html, no_update
 from dotenv import load_dotenv
-from pyarrow import fs as pyfs
 
+from ..dropdowns import options_from_series
+from ..snapshots import build_snapshot_options
+from ..data_sources import (
+    DEFAULT_ACCEPTANCE_TABLE,
+    load_dataset_from_source,
+)
 from ..feature_config import DEFAULT_UI_FEATURE_CONFIG
 from ..formatting import prepare_bid_record
 from ..plotting import build_prediction_plot
 from ..tables import build_bid_table
 
-DEFAULT_ACCEPTANCE_TABLE = "model_prediction_testing.audit_bid_predictor"
 load_dotenv()
 
 _ACCEPTANCE_TABLE_FEATURES = [
@@ -79,122 +77,12 @@ def _acceptance_feature_config() -> Dict[str, List[str]]:
     return config
 
 
-def _is_s3_path(path: str) -> bool:
-    return path.startswith("s3://")
-
-
-def _parse_recent_hours(hours_value: object) -> Optional[int]:
-    if hours_value in (None, ""):
-        return None
-    try:
-        hours = int(hours_value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Recent hours must be an integer.") from exc
-    if hours <= 0:
-        raise ValueError("Recent hours must be positive.")
-    return hours
-
-
-def _list_remote_files(filesystem: pyfs.FileSystem, uri: str) -> List[str]:
-    """
-    Recursively list all parquet/csv files under an S3 directory (or return the file if a file is given).
-    Returns S3-relative paths (bucket/key), consistent with pyarrow FileSystem usage.
-    """
-    relative_path = uri.replace("s3://", "", 1)
-    info = filesystem.get_file_info([relative_path])[0]
-
-    if info.type == pyfs.FileType.NotFound:
-        raise FileNotFoundError(f"Dataset path does not exist: {uri}")
-
-    exts = {".parquet", ".pq", ".csv"}
-
-    if info.type == pyfs.FileType.File:
-        if PurePosixPath(relative_path).suffix.lower() in exts:
-            return [relative_path]
-        raise ValueError("Provided file is not a parquet or CSV file.")
-
-    if info.type == pyfs.FileType.Directory:
-        selector = pyfs.FileSelector(relative_path, recursive=True)
-        entries = filesystem.get_file_info(selector)
-        files = [
-            entry.path
-            for entry in entries
-            if entry.type == pyfs.FileType.File
-            and PurePosixPath(entry.path).suffix.lower() in exts
-        ]
-        if not files:
-            raise ValueError(
-                "No parquet or CSV files found in the provided directory or its subdirectories."
-            )
-        return sorted(files)
-
-    raise ValueError(f"Unsupported S3 path type for {uri}")
-
-
-_TIMESTAMP_PATTERN = re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})")
-
-
-def _extract_timestamp_from_name(name: str) -> Optional[pd.Timestamp]:
-    match = _TIMESTAMP_PATTERN.search(name)
-    if not match:
-        return None
-    try:
-        return pd.to_datetime(match.group(1), format="%Y-%m-%dT%H-%M-%S")
-    except (TypeError, ValueError):
-        return None
-
-
-def _filter_files_by_recent_hours(files: Sequence[str], hours: Optional[int]) -> List[str]:
-    if hours is None:
-        return sorted(files)
-
-    dated_files: List[Tuple[str, Optional[pd.Timestamp]]] = []
-    for file_path in files:
-        timestamp = _extract_timestamp_from_name(PurePosixPath(file_path).name)
-        dated_files.append((file_path, timestamp))
-
-    timestamps = [ts for _, ts in dated_files if ts is not None and not pd.isna(ts)]
-    if not timestamps:
-        return sorted(files)
-
-    latest_timestamp = max(timestamps)
-    threshold = latest_timestamp - pd.Timedelta(hours=hours)
-    filtered = [path for path, ts in dated_files if ts is not None and ts >= threshold]
-    return sorted(filtered or [path for path, _ in dated_files])
-
-
 def _scale_acceptance_probabilities(series: pd.Series) -> pd.Series:
     numeric = pd.to_numeric(series, errors="coerce")
     non_na = numeric.dropna()
     if not non_na.empty and non_na.max() <= 1:
         numeric = numeric * 100.0
     return numeric
-
-
-def _validate_table_name(table_name: str) -> str:
-    if not table_name or not re.match(r"^[A-Za-z0-9_.]+$", table_name):
-        raise ValueError(
-            "Table name must include only letters, numbers, underscores, or periods."
-        )
-    return table_name
-
-
-def _redshift_credentials() -> Dict[str, str]:
-    required = [
-        "REDSHIFT_HOST",
-        "REDSHIFT_DATABASE",
-        "REDSHIFT_USER",
-        "REDSHIFT_PASSWORD",
-        "REDSHIFT_PORT",
-    ]
-    values = {name: os.getenv(name) for name in required}
-    missing = [name for name, value in values.items() if not value]
-    if missing:
-        raise EnvironmentError(
-            "Missing environment variables for Redshift connection: "
-            + ", ".join(missing)
-        )
-    return {name: str(values[name]) for name in required}
 
 
 def _normalize_acceptance_dataset(dataset: pd.DataFrame) -> pd.DataFrame:
@@ -287,115 +175,19 @@ def _select_first_series(
     return None
 
 
-@lru_cache(maxsize=4)
-def _load_acceptance_dataset_from_path(path: str, hours: Optional[int]) -> pd.DataFrame:
-    frames: List[pd.DataFrame] = []
-    if _is_s3_path(path):
-        filesystem = pyfs.S3FileSystem()
-        files = _list_remote_files(filesystem, path)
-        filtered_files = _filter_files_by_recent_hours(files, hours)
-        for remote_path in filtered_files:
-            suffix = PurePosixPath(remote_path).suffix.lower()
-            with filesystem.open_input_file(remote_path) as handle:
-                if suffix in {".parquet", ".pq"}:
-                    frames.append(pd.read_parquet(handle))
-                elif suffix == ".csv":
-                    frames.append(pd.read_csv(handle))
-                else:
-                    raise ValueError(
-                        f"Unsupported file extension for s3://{remote_path}"
-                    )
-    else:
-        resolved = Path(path).expanduser()
-        if not resolved.exists():
-            raise FileNotFoundError(f"Dataset path does not exist: {resolved}")
-
-        if resolved.is_dir():
-            parquet_files = sorted(resolved.glob("*.parquet")) + sorted(
-                resolved.glob("*.pq")
-            )
-            csv_files = sorted(resolved.glob("*.csv"))
-            files = parquet_files + csv_files
-            if not files:
-                raise ValueError(
-                    "No parquet or CSV files found in the provided directory."
-                )
-            filtered_files = _filter_files_by_recent_hours(
-                [str(path) for path in files], hours
-            )
-            files = [Path(file_path) for file_path in filtered_files]
-        else:
-            files = [resolved]
-
-        for file_path in files:
-            suffix = file_path.suffix.lower()
-            if suffix in {".parquet", ".pq"}:
-                frames.append(pd.read_parquet(file_path))
-            elif suffix == ".csv":
-                frames.append(pd.read_csv(file_path))
-            else:
-                raise ValueError(f"Unsupported file extension for {file_path}")
-
-    dataset = pd.concat(frames, ignore_index=True, sort=False)
-    return _normalize_acceptance_dataset(dataset)
-
-
-@lru_cache(maxsize=4)
-def _load_acceptance_dataset_from_redshift(
-    table_name: str, hours: Optional[int]
+def load_acceptance_dataset(
+    config: str | Mapping[str, object], *, reload: bool = False
 ) -> pd.DataFrame:
-    validated_table = _validate_table_name(table_name)
-    credentials = _redshift_credentials()
-    query = f"SELECT * FROM {validated_table}"
-    params: Tuple[object, ...] = ()
-    if hours is not None:
-        query += " WHERE accept_prob_timestamp >= DATEADD(hour, -%s, GETDATE())"
-        params = (hours,)
-
-    connection = psycopg2.connect(
-        host=credentials["REDSHIFT_HOST"],
-        dbname=credentials["REDSHIFT_DATABASE"],
-        user=credentials["REDSHIFT_USER"],
-        password=credentials["REDSHIFT_PASSWORD"],
-        port=int(credentials["REDSHIFT_PORT"]),
-    )
-    with closing(connection) as conn:
-        frame = pd.read_sql_query(query, conn, params=params or None)
-    return _normalize_acceptance_dataset(frame)
-
-
-def load_acceptance_dataset(config: str | Mapping[str, object]) -> pd.DataFrame:
     """Load acceptance data from a file path or Redshift table."""
-
-    if isinstance(config, str):
-        return _load_acceptance_dataset_from_path(config, None)
 
     if not config:
         raise ValueError("No acceptance dataset source provided.")
 
-    source = str(config.get("source") or "path").lower()
-    if source == "redshift":
-        table = str(config.get("table") or DEFAULT_ACCEPTANCE_TABLE)
-        hours = _parse_recent_hours(config.get("hours"))
-        return _load_acceptance_dataset_from_redshift(table, hours)
-
-    if source != "path":
-        raise ValueError(f"Unsupported acceptance dataset source: {source}")
-
-    path_value = config.get("path")
-    if not path_value:
-        raise ValueError("Please provide a dataset path.")
-
-    hours = _parse_recent_hours(config.get("hours"))
-
-    return _load_acceptance_dataset_from_path(str(path_value), hours)
-
-
-def _options_from_series(values: pd.Series) -> List[dict]:
-    return [
-        {"label": str(value), "value": str(value)}
-        for value in values.dropna().drop_duplicates().sort_values()
-    ]
+    return load_dataset_from_source(
+        config,
+        normalizer=_normalize_acceptance_dataset,
+        reload=reload,
+    )
 
 
 def _build_summary(
@@ -504,7 +296,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         dataset = load_acceptance_dataset(dataset_config)
         if "carrier_code" not in dataset.columns:
             return [], None
-        options = _options_from_series(dataset["carrier_code"])
+        options = options_from_series(dataset["carrier_code"])
         return options, options[0]["value"] if options else None
 
     @app.callback(
@@ -520,7 +312,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         if not {"carrier_code", "flight_number"}.issubset(dataset.columns):
             return [], None
         mask = dataset["carrier_code"] == carrier
-        options = _options_from_series(dataset.loc[mask, "flight_number"].astype(str))
+        options = options_from_series(dataset.loc[mask, "flight_number"].astype(str))
         return options, options[0]["value"] if options else None
 
     @app.callback(
@@ -545,10 +337,14 @@ def register_acceptance_callbacks(app: Dash) -> None:
             & (dataset["flight_number"].astype(str) == str(flight_number))
         )
         travel_dates = pd.to_datetime(dataset.loc[mask, "travel_date"], errors="coerce")
-        options = [
-            {"label": date.strftime("%Y-%m-%d"), "value": date.strftime("%Y-%m-%d")}
-            for date in travel_dates.dropna().drop_duplicates().sort_values()
-        ]
+        options = options_from_series(
+            pd.Series(
+                [
+                    date.strftime("%Y-%m-%d")
+                    for date in travel_dates.dropna().drop_duplicates().sort_values()
+                ]
+            )
+        )
         return options, options[0]["value"] if options else None
 
     @app.callback(
@@ -576,7 +372,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
             & (dataset["flight_number"].astype(str) == str(flight_number))
             & (pd.to_datetime(dataset["travel_date"]).dt.date == travel_date_dt)
         )
-        options = _options_from_series(dataset.loc[mask, "upgrade_type"])
+        options = options_from_series(dataset.loc[mask, "upgrade_type"])
         return options, options[0]["value"] if options else None
 
     @app.callback(
@@ -607,8 +403,8 @@ def register_acceptance_callbacks(app: Dash) -> None:
             & (pd.to_datetime(dataset["travel_date"]).dt.date == travel_date_dt)
             & (dataset["upgrade_type"] == upgrade)
         )
-        snapshots = dataset.loc[mask, "snapshot_num"].astype(str)
-        options = _options_from_series(snapshots)
+        snapshots = dataset.loc[mask, "snapshot_num"]
+        options = build_snapshot_options(snapshots)
         return options, options[0]["value"] if options else None
 
     @app.callback(

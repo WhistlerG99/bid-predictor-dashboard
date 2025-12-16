@@ -10,29 +10,8 @@ from dash import Dash, Input, Output, State, ctx
 from dash.exceptions import PreventUpdate
 
 from ..data import load_dataset_cached
-
-
-def _options_from_series(values: pd.Series) -> List[dict]:
-    """Convert a pandas series into a list of Dash dropdown options."""
-
-    return [{"label": str(value), "value": str(value)} for value in values]
-
-
-def _choose_value(
-    options: List[Dict[str, str]],
-    requested_value: Optional[str],
-    current_value: Optional[str],
-) -> Optional[str]:
-    """Pick the dropdown value that best matches the current context."""
-
-    def _contains(value: Optional[str]) -> bool:
-        return bool(value) and any(option["value"] == value for option in options)
-
-    if _contains(requested_value):
-        return requested_value
-    if _contains(current_value):
-        return current_value
-    return options[0]["value"] if options else None
+from ..dropdowns import choose_dropdown_value, options_from_series
+from ..snapshots import build_snapshot_options
 
 
 def register_filter_callbacks(app: Dash) -> None:
@@ -60,12 +39,12 @@ def register_filter_callbacks(app: Dash) -> None:
             return [], None
 
         carriers = dataset["carrier_code"].dropna().drop_duplicates().sort_values()
-        options = _options_from_series(carriers)
+        options = options_from_series(carriers)
         requested_carrier = None
         if selection_request:
             requested_carrier = selection_request.get("carrier")
 
-        value = _choose_value(options, requested_carrier, current_value)
+        value = choose_dropdown_value(options, requested_carrier, current_value)
         return options, value
 
     @app.callback(
@@ -103,7 +82,7 @@ def register_filter_callbacks(app: Dash) -> None:
                 requested_flight = str(requested_flight)
 
         current_value = str(current_value) if current_value is not None else None
-        value = _choose_value(options, requested_flight, current_value)
+        value = choose_dropdown_value(options, requested_flight, current_value)
         return options, value
 
     @app.callback(
@@ -142,15 +121,14 @@ def register_filter_callbacks(app: Dash) -> None:
             .drop_duplicates()
             .sort_values()
         )
-        options = [
-            {"label": date.strftime("%Y-%m-%d"), "value": date.strftime("%Y-%m-%d")}
-            for date in travel_dates
-        ]
+        options = options_from_series(
+            pd.Series([date.strftime("%Y-%m-%d") for date in travel_dates])
+        )
         requested_date = None
         if selection_request:
             requested_date = selection_request.get("travel_date")
 
-        value = _choose_value(options, requested_date, current_value)
+        value = choose_dropdown_value(options, requested_date, current_value)
         return options, value
 
     @app.callback(
@@ -189,12 +167,12 @@ def register_filter_callbacks(app: Dash) -> None:
         upgrades = (
             dataset.loc[mask, "upgrade_type"].dropna().drop_duplicates().sort_values()
         )
-        options = [{"label": str(upg), "value": str(upg)} for upg in upgrades]
+        options = options_from_series(upgrades)
         requested_upgrade = None
         if selection_request:
             requested_upgrade = selection_request.get("upgrade_type")
 
-        value = _choose_value(options, requested_upgrade, current_value)
+        value = choose_dropdown_value(options, requested_upgrade, current_value)
         return options, value
 
     @app.callback(
@@ -235,12 +213,8 @@ def register_filter_callbacks(app: Dash) -> None:
             & (pd.to_datetime(dataset["travel_date"]).dt.date == travel_date_dt)
             & (dataset["upgrade_type"] == upgrade_type)
         )
-        snapshots = (
-            dataset.loc[mask, "snapshot_num"].dropna().drop_duplicates().sort_values()
-        )
-        options = [
-            {"label": f"Snapshot {snap}", "value": str(snap)} for snap in snapshots
-        ]
+        snapshots = dataset.loc[mask, "snapshot_num"]
+        options = build_snapshot_options(snapshots)
         value = options[0]["value"] if options else None
         return options, value
 

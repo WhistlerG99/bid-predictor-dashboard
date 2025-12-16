@@ -9,9 +9,9 @@ from copy import deepcopy
 from typing import Optional
 
 import mlflow
-from dash import Dash, Input, Output, State, dcc, html
+from dash import Dash, Input, Output, State, callback_context, dcc, html
 from mlflow.exceptions import MlflowException
-from bid_predictor.utils import detect_execution_environment
+# from bid_predictor.utils import detect_execution_environment
 
 from bid_predictor_ui import (
     DEFAULT_UI_FEATURE_CONFIG,
@@ -19,6 +19,7 @@ from bid_predictor_ui import (
     load_dataset_cached,
     load_model_cached,
 )
+from bid_predictor_ui.data_sources import DEFAULT_ACCEPTANCE_TABLE
 from bid_predictor_ui.feature_sensitivity import (
     build_feature_sensitivity_tab,
     register_feature_sensitivity_callbacks,
@@ -33,19 +34,17 @@ from bid_predictor_ui.snapshot import (
     register_snapshot_callbacks,
 )
 
-DEFAULT_ACCEPTANCE_TABLE = "model_prediction_testing.audit_bid_predictor"
-
-if detect_execution_environment()[0] in (
-        "sagemaker_notebook",
-        "sagemaker_terminal",
-    ):
-    arn = os.environ["MLFLOW_AWS_ARN"]
-    mlflow.set_tracking_uri(arn)
-    default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
-else:
-    default_dataset_path = (
-        "./data/air_canada_and_lot/evaluation_sets/eval_bid_data_snapshots_v2_3_or_mode_bids.parquet"
-    )
+# if detect_execution_environment()[0] in (
+#         "sagemaker_notebook",
+#         "sagemaker_terminal",
+#     ):
+arn = os.environ["MLFLOW_AWS_ARN"]
+mlflow.set_tracking_uri(arn)
+default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
+# else:
+#     default_dataset_path = (
+#         "./data/air_canada_and_lot/evaluation_sets/eval_bid_data_snapshots_v2_3_or_mode_bids.parquet"
+#     )
 
 # -- Dash application --------------------------------------------------------------------------
 
@@ -102,6 +101,20 @@ def create_app() -> Dash:
                                             "color": "white",
                                             "border": "none",
                                             "padding": "0.6rem",
+                                            "borderRadius": "6px",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Reload dataset",
+                                        id="reload-dataset",
+                                        n_clicks=0,
+                                        style={
+                                            "width": "100%",
+                                            "marginTop": "0.5rem",
+                                            "backgroundColor": "#457b9d",
+                                            "color": "white",
+                                            "border": "none",
+                                            "padding": "0.5rem",
                                             "borderRadius": "6px",
                                         },
                                     ),
@@ -290,6 +303,20 @@ def create_app() -> Dash:
                                             "borderRadius": "6px",
                                         },
                                     ),
+                                    html.Button(
+                                        "Reload acceptance dataset",
+                                        id="reload-acceptance-dataset",
+                                        n_clicks=0,
+                                        style={
+                                            "width": "100%",
+                                            "marginTop": "0.5rem",
+                                            "backgroundColor": "#457b9d",
+                                            "color": "white",
+                                            "border": "none",
+                                            "padding": "0.5rem",
+                                            "borderRadius": "6px",
+                                        },
+                                    ),
                                     dcc.Loading(
                                         id="acceptance-dataset-loading",
                                         type="circle",
@@ -390,25 +417,35 @@ def create_app() -> Dash:
         Output("dataset-status", "children"),
         Output("dataset-path-store", "data"),
         Input("load-dataset", "n_clicks"),
+        Input("reload-dataset", "n_clicks"),
         State("dataset-path", "value"),
         prevent_initial_call=True,
     )
-    def load_dataset(n_clicks: int, path: str):
+    def load_dataset(load_clicks: int, reload_clicks: int, path: str):
         if not path:
             return "Please provide a dataset path.", None
 
+        triggered = (
+            callback_context.triggered[0]["prop_id"].split(".")[0]
+            if callback_context.triggered
+            else ""
+        )
+        reload_flag = triggered == "reload-dataset"
+
         try:
-            dataset = load_dataset_cached(path)
+            dataset = load_dataset_cached(path, reload=reload_flag)
         except Exception as exc:  # pragma: no cover - user feedback
             return f"Failed to load dataset: {exc}", None
 
-        status = f"Loaded dataset with {len(dataset):,} rows."
+        status_prefix = "Reloaded" if reload_flag else "Loaded"
+        status = f"{status_prefix} dataset with {len(dataset):,} rows."
         return status, path
 
     @app.callback(
         Output("acceptance-dataset-status", "children"),
         Output("acceptance-dataset-path-store", "data"),
         Input("load-acceptance-dataset", "n_clicks"),
+        Input("reload-acceptance-dataset", "n_clicks"),
         State("acceptance-dataset-path", "value"),
         State("acceptance-source", "value"),
         State("acceptance-table-name", "value"),
@@ -416,7 +453,8 @@ def create_app() -> Dash:
         prevent_initial_call=True,
     )
     def load_acceptance_dataset_path(
-        n_clicks: int,
+        load_clicks: int,
+        reload_clicks: int,
         path: str,
         source: str,
         table_name: str,
@@ -437,23 +475,33 @@ def create_app() -> Dash:
             if hours not in (None, ""):
                 dataset_config["hours"] = hours
 
+        triggered = (
+            callback_context.triggered[0]["prop_id"].split(".")[0]
+            if callback_context.triggered
+            else ""
+        )
+        reload_flag = triggered == "reload-acceptance-dataset"
+
         try:
-            dataset = load_acceptance_dataset(dataset_config)
+            dataset = load_acceptance_dataset(dataset_config, reload=reload_flag)
         except Exception as exc:  # pragma: no cover - user feedback
             return f"Failed to load acceptance dataset: {exc}", None
 
+        status_prefix = "Reloaded" if reload_flag else "Loaded"
         if source == "redshift":
             hours_text = (
                 f" from last {int(hours)} hours" if hours not in (None, "") else ""
             )
             summary = (
-                f"Loaded {len(dataset):,} rows from {dataset_config['table']}{hours_text}."
+                f"{status_prefix} {len(dataset):,} rows from {dataset_config['table']}{hours_text}."
             )
         else:
             hours_text = (
                 f" from last {int(hours)} hours" if hours not in (None, "") else ""
             )
-            summary = f"Loaded acceptance dataset{hours_text} with {len(dataset):,} rows."
+            summary = (
+                f"{status_prefix} acceptance dataset{hours_text} with {len(dataset):,} rows."
+            )
         return summary, dataset_config
 
     @app.callback(
@@ -506,7 +554,9 @@ def create_app() -> Dash:
 
 def main():  # pragma: no cover - manual entry point
     app = create_app()
-    app.run_server(debug=True)
+    # app.run_server(debug=True)
+    port = int(os.getenv("PORT", 8000))  # App Runner passes a PORT sometimes, but default is fine
+    app.run_server(host="0.0.0.0", port=port, debug=False)
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI guard
