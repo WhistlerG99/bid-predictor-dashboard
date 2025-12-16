@@ -11,7 +11,7 @@ from typing import Optional
 import mlflow
 from dash import Dash, Input, Output, State, callback_context, dcc, html
 from mlflow.exceptions import MlflowException
-from bid_predictor.utils import detect_execution_environment
+# from bid_predictor.utils import detect_execution_environment
 
 from bid_predictor_ui import (
     DEFAULT_UI_FEATURE_CONFIG,
@@ -34,17 +34,17 @@ from bid_predictor_ui.snapshot import (
     register_snapshot_callbacks,
 )
 
-if detect_execution_environment()[0] in (
-        "sagemaker_notebook",
-        "sagemaker_terminal",
-    ):
-    arn = os.environ["MLFLOW_AWS_ARN"]
-    mlflow.set_tracking_uri(arn)
-    default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
-else:
-    default_dataset_path = (
-        "./data/air_canada_and_lot/evaluation_sets/eval_bid_data_snapshots_v2_3_or_mode_bids.parquet"
-    )
+# if detect_execution_environment()[0] in (
+#         "sagemaker_notebook",
+#         "sagemaker_terminal",
+#     ):
+arn = os.environ["MLFLOW_AWS_ARN"]
+mlflow.set_tracking_uri(arn)
+default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
+# else:
+#     default_dataset_path = (
+#         "./data/air_canada_and_lot/evaluation_sets/eval_bid_data_snapshots_v2_3_or_mode_bids.parquet"
+#     )
 
 # -- Dash application --------------------------------------------------------------------------
 
@@ -554,7 +554,9 @@ def create_app() -> Dash:
 
 def main():  # pragma: no cover - manual entry point
     app = create_app()
-    app.run_server(debug=True)
+    # app.run_server(debug=True)
+    port = int(os.getenv("PORT", 8000))  # App Runner passes a PORT sometimes, but default is fine
+    app.run_server(host="0.0.0.0", port=port, debug=False)
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI guard
