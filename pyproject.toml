@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bid-predictor-dashboard"                 # The package name on PyPI (hyphens OK)
+version = "0.1.0"
+description = "bid prediction dashboard."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "Christopher Gauthier" }]
+keywords = ["bids", "prediction", "ml", "dash"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+
+[project.urls]
+Homepage = "https://example.com/bid-predictor-dashboard"
+Repository = "https://example.com/bid-predictor-dashboard"
+
+# --- tell setuptools where to find your package ---
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["bid_predictor_ui*"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+# [tool.setuptools.dynamic.optional-dependencies]
+# dev  = { file = ["requirements-dev.txt"] }
+# test = { file = ["requirements-test.txt"] }
+
+# If you ship non-.py files inside bid_predictor_ui/, uncomment:
+[tool.setuptools]
+include-package-data = true
+
+[tool.pytest.ini_options]
+markers = [
+  "integration: Integration tests exercising the end-to-end training and tuning workflows."
+]
