@@ -10,29 +10,13 @@ from dash import Dash, Input, Output, State, ctx
 from dash.exceptions import PreventUpdate
 
 from ..data import load_dataset_cached
+from ..dropdowns import choose_dropdown_value
 from ..scenario import (
     build_carrier_options,
     build_flight_number_options,
     build_travel_date_options,
     build_upgrade_options,
 )
-
-
-def _choose_value(
-    options: List[Dict[str, str]],
-    requested_value: Optional[str],
-    current_value: Optional[str],
-) -> Optional[str]:
-    """Pick the dropdown value that best matches the current context."""
-
-    def _contains(value: Optional[str]) -> bool:
-        return bool(value) and any(option["value"] == value for option in options)
-
-    if _contains(requested_value):
-        return requested_value
-    if _contains(current_value):
-        return current_value
-    return options[0]["value"] if options else None
 
 
 def register_filter_callbacks(app: Dash) -> None:
@@ -68,7 +52,7 @@ def register_filter_callbacks(app: Dash) -> None:
         requested_carrier = None
         if selection_request:
             requested_carrier = selection_request.get("carrier")
-        value = _choose_value(options, requested_carrier, current_value)
+        value = choose_dropdown_value(options, requested_carrier, current_value)
         return options, value
 
     @app.callback(
@@ -106,7 +90,7 @@ def register_filter_callbacks(app: Dash) -> None:
             if requested_flight is not None:
                 requested_flight = str(requested_flight)
         current_value = str(current_value) if current_value is not None else None
-        value = _choose_value(options, requested_flight, current_value)
+        value = choose_dropdown_value(options, requested_flight, current_value)
         return options, value
 
     @app.callback(
@@ -143,7 +127,7 @@ def register_filter_callbacks(app: Dash) -> None:
         requested_date = None
         if selection_request:
             requested_date = selection_request.get("travel_date")
-        value = _choose_value(options, requested_date, current_value)
+        value = choose_dropdown_value(options, requested_date, current_value)
         return options, value
 
     @app.callback(
@@ -183,7 +167,7 @@ def register_filter_callbacks(app: Dash) -> None:
         requested_upgrade = None
         if selection_request:
             requested_upgrade = selection_request.get("upgrade_type")
-        value = _choose_value(options, requested_upgrade, current_value)
+        value = choose_dropdown_value(options, requested_upgrade, current_value)
         return options, value
 
     @app.callback(

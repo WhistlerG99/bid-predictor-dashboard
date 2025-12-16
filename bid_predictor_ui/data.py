@@ -205,27 +205,40 @@ def load_dataset(options: DatasetLoadOptions | None = None) -> pd.DataFrame:
     )
 
 
-@lru_cache(maxsize=4)
-def load_dataset_cached(dataset_path: str) -> pd.DataFrame:
-    data = load_training_data(
-        dataset_path,
-        max_departure_offset_days=5,
-    )
+_DATASET_CACHE: Dict[str, pd.DataFrame] = {}
 
-    missing = [col for col in REQUIRED_DATA_COLUMNS if col not in data.columns]
-    if missing:
-        raise ValueError(
-            "Dataset is missing required columns: {}".format(
-                ", ".join(sorted(missing))
-            )
+
+def _clear_dataset_cache() -> None:
+    _DATASET_CACHE.clear()
+
+
+def load_dataset_cached(dataset_path: str, reload: bool = False) -> pd.DataFrame:
+    if reload or dataset_path not in _DATASET_CACHE:
+        data = load_training_data(
+            dataset_path,
+            max_departure_offset_days=5,
         )
 
-    _coerce_datetime_columns(
-        data,
-        ["current_timestamp", "departure_timestamp", "travel_date"],
-    )
+        missing = [col for col in REQUIRED_DATA_COLUMNS if col not in data.columns]
+        if missing:
+            raise ValueError(
+                "Dataset is missing required columns: {}".format(
+                    ", ".join(sorted(missing))
+                )
+            )
 
-    return data
+        _coerce_datetime_columns(
+            data,
+            ["current_timestamp", "departure_timestamp", "travel_date"],
+        )
+
+        _DATASET_CACHE[dataset_path] = data
+
+    return _DATASET_CACHE[dataset_path]
+
+
+# Preserve the cache_clear interface used in tests
+load_dataset_cached.cache_clear = _clear_dataset_cache  # type: ignore[attr-defined]
 
 
 @lru_cache(maxsize=4)

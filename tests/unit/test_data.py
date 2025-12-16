@@ -56,6 +56,36 @@ def test_load_dataset_cached_missing_columns(monkeypatch):
         load_dataset_cached("/tmp/missing.parquet")
 
 
+def test_load_dataset_cached_reload(monkeypatch):
+    calls: list[str] = []
+
+    def fake_loader(path: str, **kwargs) -> pd.DataFrame:
+        calls.append(path)
+        return pd.DataFrame(
+            {
+                "carrier_code": ["AC"],
+                "flight_number": ["123"],
+                "travel_date": ["2024-01-01"],
+                "upgrade_type": ["biz"],
+                "snapshot_num": [1],
+                "current_timestamp": ["2024-01-01T00:00:00"],
+                "departure_timestamp": ["2024-01-02T00:00:00"],
+            }
+        )
+
+    monkeypatch.setattr(
+        "bid_predictor_ui.data.load_training_data",
+        fake_loader,
+    )
+
+    _ = load_dataset_cached("/tmp/data.parquet")
+    _ = load_dataset_cached("/tmp/data.parquet")
+    assert calls == ["/tmp/data.parquet"]
+
+    _ = load_dataset_cached("/tmp/data.parquet", reload=True)
+    assert calls == ["/tmp/data.parquet", "/tmp/data.parquet"]
+
+
 def test_prepare_prediction_dataframe_converts_types():
     records = [
         {
