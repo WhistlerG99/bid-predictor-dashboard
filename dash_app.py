@@ -41,10 +41,7 @@ if detect_execution_environment()[0] in (
     ):
     arn = os.environ["MLFLOW_AWS_ARN"]
     mlflow.set_tracking_uri(arn)
-    default_dataset_path = (
-        os.environ.get("S3_BUCKET_DATA")
-        + "/data/air_canada_and_lot/evaluation_sets/eval_bid_data_snapshots_v2_3_or_mode_bids.parquet"
-    )
+    default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
 else:
     default_dataset_path = (
         "./data/air_canada_and_lot/evaluation_sets/eval_bid_data_snapshots_v2_3_or_mode_bids.parquet"
@@ -243,6 +240,7 @@ def create_app() -> Dash:
                                     dcc.Input(
                                         id="acceptance-dataset-path",
                                         type="text",
+                                        value=default_dataset_path,
                                         placeholder="Path to acceptance probability data",
                                         style={
                                             "width": "100%",
