@@ -3,10 +3,8 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-from uuid import uuid4
-
 import pandas as pd
-from dash import Dash, Input, Output, State, ctx
+from dash import Dash, Input, Output, State
 from dash.exceptions import PreventUpdate
 
 from ..data import load_dataset_cached
@@ -17,6 +15,7 @@ from ..scenario import (
     build_travel_date_options,
     build_upgrade_options,
 )
+from ..selection_controls import register_selection_history_callbacks
 
 
 def register_filter_callbacks(app: Dash) -> None:
@@ -170,146 +169,19 @@ def register_filter_callbacks(app: Dash) -> None:
         value = choose_dropdown_value(options, requested_upgrade, current_value)
         return options, value
 
-    @app.callback(
-        Output("scenario-selection-request-store", "data"),
-        Input("scenario-random-selection-button", "n_clicks"),
-        Input("scenario-selection-history-dropdown", "value"),
-        State("dataset-path-store", "data"),
-        State("scenario-selection-history-store", "data"),
-        prevent_initial_call=True,
+    register_selection_history_callbacks(
+        app,
+        dataset_store_id="dataset-path-store",
+        random_button_id="scenario-random-selection-button",
+        history_dropdown_id="scenario-selection-history-dropdown",
+        history_store_id="scenario-selection-history-store",
+        selection_request_store_id="scenario-selection-request-store",
+        carrier_dropdown_id="scenario-carrier-dropdown",
+        flight_dropdown_id="scenario-flight-number-dropdown",
+        travel_date_dropdown_id="scenario-travel-date-dropdown",
+        upgrade_dropdown_id="scenario-upgrade-dropdown",
+        loader=load_dataset_cached,
     )
-    def handle_scenario_selection_requests(
-        random_clicks: Optional[int],
-        history_selection: Optional[str],
-        dataset_path: Optional[str],
-        history: Optional[List[Dict[str, str]]],
-    ):
-        """Dispatch random and history-based selection requests for scenarios."""
-
-        trigger = ctx.triggered_id
-        if trigger == "scenario-random-selection-button":
-            if not dataset_path:
-                raise PreventUpdate
-
-            dataset = load_dataset_cached(dataset_path)
-            required = {
-                "carrier_code",
-                "flight_number",
-                "travel_date",
-                "upgrade_type",
-            }
-            if not required.issubset(dataset.columns):
-                raise PreventUpdate
-
-            candidates = dataset.dropna(subset=required)[list(required)].copy()
-            if candidates.empty:
-                raise PreventUpdate
-
-            candidates["flight_number"] = candidates["flight_number"].astype(str)
-            candidates["carrier_code"] = candidates["carrier_code"].astype(str)
-            travel_dates = pd.to_datetime(candidates["travel_date"], errors="coerce")
-            candidates = candidates.assign(travel_date=travel_dates)
-            candidates = candidates.dropna()
-            candidates["travel_date"] = candidates["travel_date"].dt.strftime(
-                "%Y-%m-%d"
-            )
-            candidates = candidates.drop_duplicates()
-            if candidates.empty:
-                raise PreventUpdate
-
-            selection = candidates.sample(n=1).iloc[0]
-            return {
-                "carrier": selection["carrier_code"],
-                "flight_number": selection["flight_number"],
-                "travel_date": selection["travel_date"],
-                "upgrade_type": selection["upgrade_type"],
-                "trigger": str(uuid4()),
-            }
-
-        if trigger == "scenario-selection-history-dropdown":
-            if not history_selection:
-                raise PreventUpdate
-
-            history = history or []
-            for entry in history:
-                if entry.get("id") == history_selection:
-                    return {
-                        "carrier": entry["carrier"],
-                        "flight_number": entry["flight_number"],
-                        "travel_date": entry["travel_date"],
-                        "upgrade_type": entry["upgrade_type"],
-                        "trigger": str(uuid4()),
-                    }
-            raise PreventUpdate
-
-        raise PreventUpdate
-
-    @app.callback(
-        Output("scenario-selection-history-store", "data"),
-        Output("scenario-selection-history-dropdown", "options"),
-        Input("scenario-carrier-dropdown", "value"),
-        Input("scenario-flight-number-dropdown", "value"),
-        Input("scenario-travel-date-dropdown", "value"),
-        Input("scenario-upgrade-dropdown", "value"),
-        Input("dataset-path-store", "data"),
-        State("scenario-selection-history-store", "data"),
-        prevent_initial_call=True,
-    )
-    def update_scenario_selection_history(
-        carrier: Optional[str],
-        flight_number: Optional[str],
-        travel_date: Optional[str],
-        upgrade_type: Optional[str],
-        dataset_path: Optional[str],
-        history: Optional[List[Dict[str, str]]],
-    ):
-        """Record the most recent scenario selection and update the history list."""
-
-        trigger = ctx.triggered_id
-        if trigger == "dataset-path-store":
-            return [], []
-
-        if not (carrier and flight_number and travel_date and upgrade_type):
-            raise PreventUpdate
-
-        history = history or []
-        entry_id = "|".join(
-            [
-                str(carrier),
-                str(flight_number),
-                str(travel_date),
-                str(upgrade_type),
-            ]
-        )
-        label = f"{carrier} {flight_number} · {travel_date} · {upgrade_type}"
-        new_entry = {
-            "id": entry_id,
-            "carrier": str(carrier),
-            "flight_number": str(flight_number),
-            "travel_date": str(travel_date),
-            "upgrade_type": str(upgrade_type),
-            "label": label,
-        }
-
-        filtered_history = [entry for entry in history if entry.get("id") != entry_id]
-        filtered_history.insert(0, new_entry)
-        filtered_history = filtered_history[:20]
-
-        options = [
-            {"label": entry["label"], "value": entry["id"]}
-            for entry in filtered_history
-        ]
-        return filtered_history, options
-
-    @app.callback(
-        Output("scenario-selection-history-dropdown", "value"),
-        Input("dataset-path-store", "data"),
-        prevent_initial_call=True,
-    )
-    def reset_scenario_selection_history_value(_: Optional[str]):
-        """Clear the scenario selection history dropdown when the dataset changes."""
-
-        return None
 
 
 __all__ = ["register_filter_callbacks"]
