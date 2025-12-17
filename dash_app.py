@@ -33,6 +33,10 @@ from bid_predictor_ui.snapshot import (
     build_snapshot_tab,
     register_snapshot_callbacks,
 )
+from bid_predictor_ui.performance_tracker import (
+    build_performance_tab,
+    register_performance_callbacks,
+)
 
 # if detect_execution_environment()[0] in (
 #         "sagemaker_notebook",
@@ -375,6 +379,7 @@ def create_app() -> Dash:
                     build_snapshot_tab(),
                     build_feature_sensitivity_tab(),
                     build_acceptance_tab(),
+                    build_performance_tab(),
                 ],
                 style={"marginTop": "1rem"},
             ),
@@ -389,6 +394,7 @@ def create_app() -> Dash:
     register_snapshot_callbacks(app)
     register_feature_sensitivity_callbacks(app)
     register_acceptance_callbacks(app)
+    register_performance_callbacks(app)
 
     # Callbacks -----------------------------------------------------------------------------
 
@@ -410,7 +416,7 @@ def create_app() -> Dash:
             "gap": "1.5rem",
             "marginBottom": "1.5rem",
         }
-        if active_tab == "acceptance":
+        if active_tab in {"acceptance", "performance"}:
             standard_style["display"] = "none"
             acceptance_style["display"] = "flex"
         return standard_style, acceptance_style
