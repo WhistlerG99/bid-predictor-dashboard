@@ -147,6 +147,26 @@ def _build_graph_card() -> html.Div:
                 "Acceptance probability by snapshot",
                 style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
             ),
+            html.Div(
+                [
+                    html.Label(
+                        "Snapshot display frequency", style={"fontWeight": "600"}
+                    ),
+                    dcc.Dropdown(
+                        id="acceptance-snapshot-frequency-dropdown",
+                        options=[
+                            {"label": "Show every snapshot", "value": 1},
+                            {"label": "Every 2nd snapshot", "value": 2},
+                            {"label": "Every 3rd snapshot", "value": 3},
+                            {"label": "Every 5th snapshot", "value": 5},
+                        ],
+                        value=1,
+                        clearable=False,
+                        style={"width": "240px"},
+                    ),
+                ],
+                style={"marginBottom": "0.5rem"},
+            ),
             dcc.Graph(
                 id="acceptance-prediction-graph",
                 figure={},

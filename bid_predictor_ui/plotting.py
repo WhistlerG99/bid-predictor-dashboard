@@ -1,7 +1,7 @@
 """Plotting helpers for the Dash UI."""
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Iterable, Optional
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -150,4 +150,52 @@ def build_prediction_plot(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-__all__ = ["BAR_COLOR_SEQUENCE", "build_prediction_plot"]
+def filter_snapshots_by_frequency(
+    df: pd.DataFrame,
+    frequency: Optional[int | str],
+    *,
+    priority_labels: Optional[Iterable[object]] = None,
+) -> pd.DataFrame:
+    """Down-sample snapshot rows for plotting while preserving key labels.
+
+    Parameters
+    ----------
+    df:
+        DataFrame containing a ``snapshot_num`` column.
+    frequency:
+        How many snapshots to skip between points (e.g., ``2`` keeps every
+        other snapshot). Values ``None`` or less than ``2`` leave ``df``
+        unchanged.
+    priority_labels:
+        Snapshot identifiers that should always be retained regardless of the
+        sampling frequency (useful for ensuring a user-selected snapshot stays
+        visible).
+    """
+
+    if df.empty or "snapshot_num" not in df.columns:
+        return df
+
+    try:
+        freq_value = int(frequency) if frequency is not None else 1
+    except (TypeError, ValueError):
+        return df
+
+    if freq_value <= 1:
+        return df
+
+    snapshot_labels = pd.Series(df["snapshot_num"].astype(str))
+    unique_labels = pd.unique(snapshot_labels)
+    keep_labels = set(unique_labels[::freq_value])
+
+    if priority_labels:
+        keep_labels.update(str(label) for label in priority_labels if label is not None)
+
+    mask = snapshot_labels.isin(keep_labels)
+    return df.loc[mask].copy()
+
+
+__all__ = [
+    "BAR_COLOR_SEQUENCE",
+    "build_prediction_plot",
+    "filter_snapshots_by_frequency",
+]

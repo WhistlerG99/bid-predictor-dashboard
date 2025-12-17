@@ -16,7 +16,7 @@ from ..data_sources import (
 )
 from ..feature_config import DEFAULT_UI_FEATURE_CONFIG
 from ..formatting import prepare_bid_record
-from ..plotting import build_prediction_plot
+from ..plotting import build_prediction_plot, filter_snapshots_by_frequency
 from ..tables import build_bid_table
 from ..selection_controls import register_selection_history_callbacks
 
@@ -501,6 +501,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Output("acceptance-bid-table", "style_data_conditional"),
         Output("acceptance-table-feedback", "children"),
         Input("acceptance-snapshot-dropdown", "value"),
+        Input("acceptance-snapshot-frequency-dropdown", "value"),
         State("acceptance-carrier-dropdown", "value"),
         State("acceptance-flight-number-dropdown", "value"),
         State("acceptance-travel-date-dropdown", "value"),
@@ -509,6 +510,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
     )
     def render_view(
         snapshot_value: Optional[str],
+        snapshot_frequency: Optional[int],
         carrier: Optional[str],
         flight_number: Optional[str],
         travel_date: Optional[str],
@@ -574,6 +576,9 @@ def register_acceptance_callbacks(app: Dash) -> None:
                 graph_df["accept_prob_timestamp"], errors="coerce"
             )
 
+        graph_df = filter_snapshots_by_frequency(
+            graph_df, snapshot_frequency, priority_labels=[snapshot_value]
+        )
         figure = build_prediction_plot(graph_df)
         warning = "" if snapshot_value else "Select a snapshot to view bid details."
 
