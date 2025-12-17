@@ -33,7 +33,7 @@ def _compute_bin_metrics(
         return pd.DataFrame()
 
     working["actual_positive"] = working["offer_status"] == "TICKETED"
-    working["predicted_positive"] = working["accept_prob"] >= threshold
+    working["predicted_positive"] = working["accept_prob"] >= threshold * 100
 
     min_hour = float(np.floor(working["hours_before_departure"].min()))
     max_hour = float(np.ceil(working["hours_before_departure"].max()))
