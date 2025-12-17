@@ -25,14 +25,14 @@ BAR_COLOR_SEQUENCE = (
 )
 
 
-def build_prediction_plot(df: pd.DataFrame) -> go.Figure:
-    """Create a grouped bar chart showing acceptance probability over time.
+def build_prediction_plot(df: pd.DataFrame, *, chart_type: str = "bar") -> go.Figure:
+    """Create a grouped chart showing acceptance probability over time.
 
     The plot aggregates records by bid, sorts each series by time to departure
     (deriving the column when necessary) and overlays an optional line trace for
     seats available.  Colour palettes are chosen to provide consistent styling
     across the UI, and a descriptive hover tooltip is constructed so analysts
-    can see the bid number, snapshot identifier and probability for each bar.
+    can see the bid number, snapshot identifier and probability for each point.
     When no predictions are present an empty figure with an explanatory title is
     returned to keep the layout stable.
     """
@@ -69,6 +69,8 @@ def build_prediction_plot(df: pd.DataFrame) -> go.Figure:
         "unknown": "#5e60ce",
     }
 
+    render_as_bar = str(chart_type).lower() != "line"
+
     for color_index, (bid_id, grp) in enumerate(work.groupby("Bid #")):
         grp_sorted = grp.sort_values("time_until_departure_hours")
         status = grp_sorted["offer_status"].iloc[-1]
@@ -97,16 +99,30 @@ def build_prediction_plot(df: pd.DataFrame) -> go.Figure:
         hover_template = "<br>".join(hover_lines)
 
         customdata = pd.concat(custom_columns, axis=1).to_numpy()
-        fig.add_trace(
-            go.Bar(
+        if render_as_bar:
+            trace: go.BaseTraceType = go.Bar(
                 x=grp_sorted["time_until_departure_hours"],
                 y=grp_sorted["Acceptance Probability"],
                 name=label,
-                marker=dict(color=marker_color, line=dict(color=border_color, width=1.5)),
+                marker=dict(
+                    color=marker_color, line=dict(color=border_color, width=1.5)
+                ),
                 customdata=customdata,
                 hovertemplate=hover_template + "<extra></extra>",
             )
-        )
+        else:
+            trace = go.Scatter(
+                x=grp_sorted["time_until_departure_hours"],
+                y=grp_sorted["Acceptance Probability"],
+                name=label,
+                mode="lines+markers",
+                line=dict(color=marker_color, width=3),
+                marker=dict(color=marker_color, line=dict(color=border_color, width=1)),
+                customdata=customdata,
+                hovertemplate=hover_template + "<extra></extra>",
+            )
+
+        fig.add_trace(trace)
 
     if "seats_available" in work.columns:
         seats = (
@@ -121,13 +137,14 @@ def build_prediction_plot(df: pd.DataFrame) -> go.Figure:
                 name="Seats available",
                 mode="lines+markers",
                 yaxis="y2",
-                line=dict(color="#FF5733"),
+                line=dict(color="#374151", dash="dash", width=3.5),
+                marker=dict(color="#111827", symbol="diamond"),
             )
         )
 
     fig.update_layout(
         template="plotly_white",
-        barmode="group",
+        barmode="group" if render_as_bar else None,
         title="Acceptance probability by snapshot",
         xaxis_title="Time until departure (hours or snapshot)",
         yaxis=dict(title="Acceptance probability (%)", rangemode="tozero"),

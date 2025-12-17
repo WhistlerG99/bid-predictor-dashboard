@@ -33,6 +33,28 @@ def test_build_prediction_plot_handles_empty():
     assert "No predictions available" in fig.layout.title.text
 
 
+def test_build_prediction_plot_supports_line_mode():
+    df = pd.DataFrame(
+        {
+            "Bid #": [1, 1],
+            "Acceptance Probability": [40.0, 60.0],
+            "snapshot_num": [1, 2],
+            "offer_status": ["pending", "pending"],
+            "seats_available": [10, 8],
+        }
+    )
+
+    fig = build_prediction_plot(df, chart_type="line")
+
+    bid_trace = fig.data[0]
+    seats_trace = fig.data[-1]
+
+    assert bid_trace.type == "scatter"
+    assert seats_trace.type == "scatter"
+    assert seats_trace.line.dash == "dash"
+    assert seats_trace.line.color != bid_trace.line.color
+
+
 def test_prediction_plot_hover_includes_bid_number():
     df = pd.DataFrame(
         {
