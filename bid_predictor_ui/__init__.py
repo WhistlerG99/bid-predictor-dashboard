@@ -14,7 +14,7 @@ from .formatting import (
     safe_float,
     sort_records_by_bid,
 )
-from .plotting import BAR_COLOR_SEQUENCE, build_prediction_plot
+from .plotting import BAR_COLOR_SEQUENCE, build_prediction_plot, filter_snapshots_by_frequency
 from .tables import apply_table_edits, build_bid_table
 from .predictions import predict
 from .data import (
@@ -53,6 +53,7 @@ __all__ = [
     "BAR_COLOR_SEQUENCE",
     "compute_bid_label_map",
     "get_next_bid_label",
+    "filter_snapshots_by_frequency",
     "normalize_offer_time",
     "load_dataset_cached",
     "load_model_cached",

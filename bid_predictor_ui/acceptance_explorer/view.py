@@ -16,7 +16,7 @@ from ..data_sources import (
 )
 from ..feature_config import DEFAULT_UI_FEATURE_CONFIG
 from ..formatting import prepare_bid_record
-from ..plotting import build_prediction_plot
+from ..plotting import build_prediction_plot, filter_snapshots_by_frequency
 from ..tables import build_bid_table
 from ..selection_controls import register_selection_history_callbacks
 
@@ -501,6 +501,8 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Output("acceptance-bid-table", "style_data_conditional"),
         Output("acceptance-table-feedback", "children"),
         Input("acceptance-snapshot-dropdown", "value"),
+        Input("acceptance-snapshot-frequency-dropdown", "value"),
+        Input("acceptance-chart-style-radio", "value"),
         State("acceptance-carrier-dropdown", "value"),
         State("acceptance-flight-number-dropdown", "value"),
         State("acceptance-travel-date-dropdown", "value"),
@@ -509,6 +511,8 @@ def register_acceptance_callbacks(app: Dash) -> None:
     )
     def render_view(
         snapshot_value: Optional[str],
+        snapshot_frequency: Optional[int],
+        chart_style: Optional[str],
         carrier: Optional[str],
         flight_number: Optional[str],
         travel_date: Optional[str],
@@ -517,10 +521,26 @@ def register_acceptance_callbacks(app: Dash) -> None:
     ):
         summary = _build_summary(carrier, flight_number, travel_date, upgrade_type)
         if not dataset_config:
-            return summary, build_prediction_plot(pd.DataFrame()), "Load a dataset to begin.", no_update, [], [], ""
+            return (
+                summary,
+                build_prediction_plot(pd.DataFrame(), chart_type=chart_style),
+                "Load a dataset to begin.",
+                no_update,
+                [],
+                [],
+                "",
+            )
 
         if not all([carrier, flight_number, travel_date, upgrade_type]):
-            return summary, build_prediction_plot(pd.DataFrame()), "", no_update, [], [], "Select a carrier, flight, travel date, and upgrade type."
+            return (
+                summary,
+                build_prediction_plot(pd.DataFrame(), chart_type=chart_style),
+                "",
+                no_update,
+                [],
+                [],
+                "Select a carrier, flight, travel date, and upgrade type.",
+            )
 
         dataset = load_acceptance_dataset(dataset_config)
         required_columns = {
@@ -530,7 +550,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
             "upgrade_type",
         }
         if not required_columns.issubset(dataset.columns):
-            empty_fig = build_prediction_plot(pd.DataFrame())
+            empty_fig = build_prediction_plot(pd.DataFrame(), chart_type=chart_style)
             return (
                 summary,
                 empty_fig,
@@ -550,7 +570,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         )
         subset = dataset.loc[mask].copy()
         if subset.empty:
-            empty_fig = build_prediction_plot(pd.DataFrame())
+            empty_fig = build_prediction_plot(pd.DataFrame(), chart_type=chart_style)
             return summary, empty_fig, "No rows found for the selected flight.", no_update, [], [], ""
 
         subset["snapshot_num"] = subset.get("snapshot_num").astype(str)
@@ -574,7 +594,10 @@ def register_acceptance_callbacks(app: Dash) -> None:
                 graph_df["accept_prob_timestamp"], errors="coerce"
             )
 
-        figure = build_prediction_plot(graph_df)
+        graph_df = filter_snapshots_by_frequency(
+            graph_df, snapshot_frequency, priority_labels=[snapshot_value]
+        )
+        figure = build_prediction_plot(graph_df, chart_type=chart_style)
         warning = "" if snapshot_value else "Select a snapshot to view bid details."
 
         if not snapshot_value:

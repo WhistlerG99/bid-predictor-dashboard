@@ -1,6 +1,10 @@
 import pandas as pd
 
-from bid_predictor_ui import BAR_COLOR_SEQUENCE, build_prediction_plot
+from bid_predictor_ui import (
+    BAR_COLOR_SEQUENCE,
+    build_prediction_plot,
+    filter_snapshots_by_frequency,
+)
 
 
 def test_build_prediction_plot_creates_traces():
@@ -29,6 +33,28 @@ def test_build_prediction_plot_handles_empty():
     assert "No predictions available" in fig.layout.title.text
 
 
+def test_build_prediction_plot_supports_line_mode():
+    df = pd.DataFrame(
+        {
+            "Bid #": [1, 1],
+            "Acceptance Probability": [40.0, 60.0],
+            "snapshot_num": [1, 2],
+            "offer_status": ["pending", "pending"],
+            "seats_available": [10, 8],
+        }
+    )
+
+    fig = build_prediction_plot(df, chart_type="line")
+
+    bid_trace = fig.data[0]
+    seats_trace = fig.data[-1]
+
+    assert bid_trace.type == "scatter"
+    assert seats_trace.type == "scatter"
+    assert seats_trace.line.dash == "dash"
+    assert seats_trace.line.color != bid_trace.line.color
+
+
 def test_prediction_plot_hover_includes_bid_number():
     df = pd.DataFrame(
         {
@@ -47,3 +73,17 @@ def test_prediction_plot_hover_includes_bid_number():
     assert first_trace.customdata.shape[1] == 2
     assert first_trace.customdata[0, 1] == "42"
     assert "Snapshot:" in first_trace.hovertemplate
+
+
+def test_filter_snapshots_by_frequency_keeps_priority_snapshot():
+    df = pd.DataFrame(
+        {
+            "snapshot_num": ["1", "2", "3", "4", "5"],
+            "Acceptance Probability": [10, 20, 30, 40, 50],
+        }
+    )
+
+    filtered = filter_snapshots_by_frequency(df, 2, priority_labels=["4"])
+
+    kept_snapshots = set(filtered["snapshot_num"].astype(str))
+    assert kept_snapshots == {"1", "3", "4", "5"}

@@ -10,7 +10,7 @@ from dash import Dash, Input, Output, State
 from ..data import load_dataset_cached, prepare_prediction_dataframe
 from ..feature_config import DEFAULT_UI_FEATURE_CONFIG
 from ..formatting import apply_bid_labels, compute_bid_label_map
-from ..plotting import build_prediction_plot
+from ..plotting import build_prediction_plot, filter_snapshots_by_frequency
 from ..predictions import extract_derived_feature_rows, predict
 
 
@@ -23,6 +23,8 @@ def register_prediction_callbacks(app: Dash) -> None:
         Output("prediction-warning", "children"),
         Input("bid-records-store", "data"),
         Input("model-uri-store", "data"),
+        Input("prediction-frequency-dropdown", "value"),
+        Input("snapshot-chart-style-radio", "value"),
         State("dataset-path-store", "data"),
         State("carrier-dropdown", "value"),
         State("flight-number-dropdown", "value"),
@@ -34,6 +36,8 @@ def register_prediction_callbacks(app: Dash) -> None:
     def run_predictions(
         records: Optional[List[Dict[str, object]]],
         model_uri: Optional[str],
+        snapshot_frequency: Optional[int],
+        chart_style: Optional[str],
         dataset_path: Optional[str],
         carrier: Optional[str],
         flight_number: Optional[str],
@@ -50,14 +54,14 @@ def register_prediction_callbacks(app: Dash) -> None:
         components.
         """
         if not records:
-            return build_prediction_plot(pd.DataFrame()), {}, ""
+            return build_prediction_plot(pd.DataFrame(), chart_type=chart_style), {}, ""
 
         selected_df = prepare_prediction_dataframe(
             records, feature_config=feature_config
         )
 
         if not model_uri:
-            empty_fig = build_prediction_plot(pd.DataFrame())
+            empty_fig = build_prediction_plot(pd.DataFrame(), chart_type=chart_style)
             return (
                 empty_fig,
                 {"probabilities": {}, "derived_features": []},
@@ -128,7 +132,10 @@ def register_prediction_callbacks(app: Dash) -> None:
             empty_fig.update_layout(title=f"Prediction failed: {exc}")
             return empty_fig, {}, str(exc)
 
-        figure = build_prediction_plot(plot_pred_df)
+        filtered_plot_df = filter_snapshots_by_frequency(
+            plot_pred_df, snapshot_frequency, priority_labels=[selected_snapshot_value]
+        )
+        figure = build_prediction_plot(filtered_plot_df, chart_type=chart_style)
         warning = (
             table_pred_df.attrs.get("model_warning", "")
             or plot_pred_df.attrs.get("model_warning", "")
