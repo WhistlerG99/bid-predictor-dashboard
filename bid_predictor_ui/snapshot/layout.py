@@ -211,24 +211,54 @@ def _build_snapshot_graph_card() -> html.Div:
                 style={"color": "#1b4965", "margin": "0"},
             ),
             html.Div(
-                [
-                    html.Label(
-                        "Snapshot display frequency", style={"fontWeight": "600"}
-                    ),
-                    dcc.Dropdown(
-                        id="prediction-frequency-dropdown",
-                        options=[
-                            {"label": "Show every snapshot", "value": 1},
-                            {"label": "Every 2nd snapshot", "value": 2},
-                            {"label": "Every 3rd snapshot", "value": 3},
-                            {"label": "Every 5th snapshot", "value": 5},
-                        ],
-                        value=1,
-                        clearable=False,
-                        style={"width": "240px"},
-                    ),
-                ],
-                style={"marginTop": "0.5rem"},
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.Label(
+                                    "Snapshot display frequency",
+                                    style={"fontWeight": "600"},
+                                ),
+                                dcc.Dropdown(
+                                    id="prediction-frequency-dropdown",
+                                    options=[
+                                        {"label": "Show every snapshot", "value": 1},
+                                        {"label": "Every 2nd snapshot", "value": 2},
+                                        {"label": "Every 3rd snapshot", "value": 3},
+                                        {"label": "Every 5th snapshot", "value": 5},
+                                    ],
+                                    value=1,
+                                    clearable=False,
+                                    style={"width": "240px"},
+                                ),
+                            ],
+                            style={"marginRight": "1rem"},
+                        ),
+                        html.Div(
+                            [
+                                html.Label("Chart style", style={"fontWeight": "600"}),
+                                dcc.RadioItems(
+                                    id="snapshot-chart-style-radio",
+                                    options=[
+                                        {"label": "Bar", "value": "bar"},
+                                        {"label": "Line", "value": "line"},
+                                    ],
+                                    value="bar",
+                                    labelStyle={"marginRight": "0.75rem"},
+                                    style={"display": "flex", "alignItems": "center"},
+                                ),
+                            ]
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "flexWrap": "wrap",
+                        "alignItems": "flex-end",
+                        "gap": "0.75rem",
+                        "marginTop": "0.5rem",
+                        "marginBottom": "0.25rem",
+                    },
+                ),
             ),
             html.Div(
                 id="prediction-warning",
