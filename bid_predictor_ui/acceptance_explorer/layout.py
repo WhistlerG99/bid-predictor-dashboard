@@ -3,12 +3,21 @@ from __future__ import annotations
 
 from dash import dash_table, dcc, html
 
+from ..selection_controls import (
+    build_random_selection_button,
+    build_selection_history_dropdown,
+)
+
 
 def _build_filter_card() -> html.Div:
     """Compose the filter controls for selecting flights and snapshots."""
 
     return html.Div(
         [
+            build_random_selection_button("acceptance-random-selection-button"),
+            build_selection_history_dropdown(
+                "acceptance-selection-history-dropdown"
+            ),
             html.Div(
                 [
                     html.Label("Carrier", style={"fontWeight": "600"}),

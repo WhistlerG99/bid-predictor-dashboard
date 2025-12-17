@@ -8,7 +8,7 @@ import pandas as pd
 from dash import Dash, Input, Output, State, html, no_update
 from dotenv import load_dotenv
 
-from ..dropdowns import options_from_series
+from ..dropdowns import choose_dropdown_value, options_from_series
 from ..snapshots import build_snapshot_options
 from ..data_sources import (
     DEFAULT_ACCEPTANCE_TABLE,
@@ -18,6 +18,7 @@ from ..feature_config import DEFAULT_UI_FEATURE_CONFIG
 from ..formatting import prepare_bid_record
 from ..plotting import build_prediction_plot
 from ..tables import build_bid_table
+from ..selection_controls import register_selection_history_callbacks
 
 load_dotenv()
 
@@ -289,23 +290,40 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Output("acceptance-carrier-dropdown", "options"),
         Output("acceptance-carrier-dropdown", "value"),
         Input("acceptance-dataset-path-store", "data"),
+        Input("acceptance-selection-request-store", "data"),
+        State("acceptance-carrier-dropdown", "value"),
     )
-    def populate_carriers(dataset_config: Optional[object]):
+    def populate_carriers(
+        dataset_config: Optional[object],
+        selection_request: Optional[Dict[str, str]],
+        current_value: Optional[str],
+    ):
         if not dataset_config:
             return [], None
         dataset = load_acceptance_dataset(dataset_config)
         if "carrier_code" not in dataset.columns:
             return [], None
         options = options_from_series(dataset["carrier_code"])
-        return options, options[0]["value"] if options else None
+        requested_carrier = None
+        if selection_request:
+            requested_carrier = selection_request.get("carrier")
+        value = choose_dropdown_value(options, requested_carrier, current_value)
+        return options, value
 
     @app.callback(
         Output("acceptance-flight-number-dropdown", "options"),
         Output("acceptance-flight-number-dropdown", "value"),
         Input("acceptance-carrier-dropdown", "value"),
+        Input("acceptance-selection-request-store", "data"),
         State("acceptance-dataset-path-store", "data"),
+        State("acceptance-flight-number-dropdown", "value"),
     )
-    def populate_flights(carrier: Optional[str], dataset_config: Optional[object]):
+    def populate_flights(
+        carrier: Optional[str],
+        selection_request: Optional[Dict[str, str]],
+        dataset_config: Optional[object],
+        current_value: Optional[str],
+    ):
         if not dataset_config or not carrier:
             return [], None
         dataset = load_acceptance_dataset(dataset_config)
@@ -313,19 +331,30 @@ def register_acceptance_callbacks(app: Dash) -> None:
             return [], None
         mask = dataset["carrier_code"] == carrier
         options = options_from_series(dataset.loc[mask, "flight_number"].astype(str))
-        return options, options[0]["value"] if options else None
+        requested_flight = None
+        if selection_request:
+            requested_flight = selection_request.get("flight_number")
+            if requested_flight is not None:
+                requested_flight = str(requested_flight)
+        current_value = str(current_value) if current_value is not None else None
+        value = choose_dropdown_value(options, requested_flight, current_value)
+        return options, value
 
     @app.callback(
         Output("acceptance-travel-date-dropdown", "options"),
         Output("acceptance-travel-date-dropdown", "value"),
         Input("acceptance-flight-number-dropdown", "value"),
+        Input("acceptance-selection-request-store", "data"),
         State("acceptance-carrier-dropdown", "value"),
         State("acceptance-dataset-path-store", "data"),
+        State("acceptance-travel-date-dropdown", "value"),
     )
     def populate_travel_dates(
         flight_number: Optional[str],
+        selection_request: Optional[Dict[str, str]],
         carrier: Optional[str],
         dataset_config: Optional[object],
+        current_value: Optional[str],
     ):
         if not dataset_config or not carrier or not flight_number:
             return [], None
@@ -345,21 +374,29 @@ def register_acceptance_callbacks(app: Dash) -> None:
                 ]
             )
         )
-        return options, options[0]["value"] if options else None
+        requested_travel_date = None
+        if selection_request:
+            requested_travel_date = selection_request.get("travel_date")
+        value = choose_dropdown_value(options, requested_travel_date, current_value)
+        return options, value
 
     @app.callback(
         Output("acceptance-upgrade-dropdown", "options"),
         Output("acceptance-upgrade-dropdown", "value"),
         Input("acceptance-travel-date-dropdown", "value"),
+        Input("acceptance-selection-request-store", "data"),
         State("acceptance-carrier-dropdown", "value"),
         State("acceptance-flight-number-dropdown", "value"),
         State("acceptance-dataset-path-store", "data"),
+        State("acceptance-upgrade-dropdown", "value"),
     )
     def populate_upgrades(
         travel_date: Optional[str],
+        selection_request: Optional[Dict[str, str]],
         carrier: Optional[str],
         flight_number: Optional[str],
         dataset_config: Optional[object],
+        current_value: Optional[str],
     ):
         if not dataset_config or not carrier or not flight_number or not travel_date:
             return [], None
@@ -373,7 +410,11 @@ def register_acceptance_callbacks(app: Dash) -> None:
             & (pd.to_datetime(dataset["travel_date"]).dt.date == travel_date_dt)
         )
         options = options_from_series(dataset.loc[mask, "upgrade_type"])
-        return options, options[0]["value"] if options else None
+        requested_upgrade = None
+        if selection_request:
+            requested_upgrade = selection_request.get("upgrade_type")
+        value = choose_dropdown_value(options, requested_upgrade, current_value)
+        return options, value
 
     @app.callback(
         Output("acceptance-snapshot-dropdown", "options"),
@@ -554,6 +595,20 @@ def register_acceptance_callbacks(app: Dash) -> None:
         )
 
         return summary, figure, warning, columns, data_rows, style_rules, ""
+
+    register_selection_history_callbacks(
+        app,
+        dataset_store_id="acceptance-dataset-path-store",
+        random_button_id="acceptance-random-selection-button",
+        history_dropdown_id="acceptance-selection-history-dropdown",
+        history_store_id="acceptance-selection-history-store",
+        selection_request_store_id="acceptance-selection-request-store",
+        carrier_dropdown_id="acceptance-carrier-dropdown",
+        flight_dropdown_id="acceptance-flight-number-dropdown",
+        travel_date_dropdown_id="acceptance-travel-date-dropdown",
+        upgrade_dropdown_id="acceptance-upgrade-dropdown",
+        loader=load_acceptance_dataset,
+    )
 
 
 __all__ = ["register_acceptance_callbacks", "load_acceptance_dataset"]
