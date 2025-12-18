@@ -220,7 +220,7 @@ def _generate_thresholds(scores: np.ndarray, requested_points: int) -> np.ndarra
     if not np.isfinite(min_score) or not np.isfinite(max_score):
         return np.array([], dtype=float)
 
-    target_points = max(int(requested_points), 2)
+    target_points = max(int(requested_points), 11)
     quantiles = np.linspace(0, 1, num=target_points)
     sampled = np.quantile(np.unique(valid_scores), quantiles)
 
@@ -771,11 +771,15 @@ def register_performance_callbacks(app: Dash) -> None:
         dataset["accept_prob"] = prob_series
 
         try:
-            requested_points = int(threshold_points) if threshold_points is not None else DEFAULT_THRESHOLD_POINTS
+            requested_points = (
+                int(threshold_points)
+                if threshold_points is not None
+                else DEFAULT_THRESHOLD_POINTS
+            )
         except (TypeError, ValueError):
             requested_points = DEFAULT_THRESHOLD_POINTS
 
-        if requested_points < 2:
+        if requested_points <= 10:
             requested_points = DEFAULT_THRESHOLD_POINTS
 
         return _roc_pr_curves(dataset, carrier, hours_range, requested_points)

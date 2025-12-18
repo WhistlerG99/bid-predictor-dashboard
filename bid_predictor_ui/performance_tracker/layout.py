@@ -271,8 +271,8 @@ def _build_roc_pr_section() -> html.Div:
                     dcc.Input(
                         id="roc-pr-threshold-points",
                         type="number",
-                        min=2,
-                        step=10,
+                        min=11,
+                        step=1,
                         value=200,
                         style={"width": "100%"},
                     ),
@@ -325,20 +325,6 @@ def _build_roc_pr_section() -> html.Div:
                     html.Div(
                         [
                             html.H5(
-                                "Negative ROC curve",
-                                style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
-                            ),
-                            dcc.Graph(
-                                id="negative-roc-curve",
-                                figure={},
-                                style={"height": "360px"},
-                            ),
-                        ],
-                        style=card_style,
-                    ),
-                    html.Div(
-                        [
-                            html.H5(
                                 "Negative Precision-Recall curve",
                                 style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
                             ),
@@ -350,10 +336,24 @@ def _build_roc_pr_section() -> html.Div:
                         ],
                         style=card_style,
                     ),
+                    html.Div(
+                        [
+                            html.H5(
+                                "Negative ROC curve",
+                                style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
+                            ),
+                            dcc.Graph(
+                                id="negative-roc-curve",
+                                figure={},
+                                style={"height": "360px"},
+                            ),
+                        ],
+                        style=card_style,
+                    ),
                 ],
                 style={
                     "display": "grid",
-                    "gridTemplateColumns": "repeat(auto-fit, minmax(280px, 1fr))",
+                    "gridTemplateColumns": "repeat(2, minmax(0, 1fr))",
                     "gap": "1rem",
                 },
             ),

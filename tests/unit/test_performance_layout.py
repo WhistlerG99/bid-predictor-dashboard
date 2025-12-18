@@ -60,3 +60,47 @@ def test_roc_pr_controls_present():
     assert pr_graph is not None, "Precision-recall graph should be present"
     assert neg_roc_graph is not None, "Negative ROC graph should be present"
     assert neg_pr_graph is not None, "Negative precision-recall graph should be present"
+
+
+def test_roc_pr_threshold_points_accepts_arbitrary_values():
+    section = layout._build_roc_pr_section()
+
+    threshold_input = _find_component(section, "roc-pr-threshold-points")
+
+    assert threshold_input is not None, "Threshold input should exist"
+    assert threshold_input.min == 11, "Threshold input should allow values greater than 10"
+    assert threshold_input.step == 1, "Threshold input should increment in single steps"
+
+
+def test_roc_pr_graph_order_matches_grid_request():
+    section = layout._build_roc_pr_section()
+
+    def _collect_graph_ids(component: Component):
+        ids = []
+
+        def _walk(node):
+            if isinstance(node, (list, tuple)):
+                for child in node:
+                    yield from _walk(child)
+                return
+
+            if getattr(node, "__class__", None) and node.__class__.__name__ == "Graph":
+                ids.append(getattr(node, "id", None))
+
+            children = getattr(node, "children", None)
+            if children is not None:
+                yield from _walk(children)
+
+        list(_walk(component))
+        return ids
+
+    graph_ids = _collect_graph_ids(section)
+    expected_order = [
+        "roc-curve",
+        "precision-recall-curve",
+        "negative-precision-recall-curve",
+        "negative-roc-curve",
+    ]
+
+    assert all(graph_id in graph_ids for graph_id in expected_order), "All graphs should be present"
+    assert graph_ids[:4] == expected_order, "Graphs should render in the requested clockwise order"
