@@ -140,7 +140,7 @@ def _build_distribution_section() -> html.Div:
                         id="accept-prob-bin-count",
                         type="number",
                         min=1,
-                        step=10,
+                        step=1,
                         value=30,
                         style={"width": "100%"},
                     ),

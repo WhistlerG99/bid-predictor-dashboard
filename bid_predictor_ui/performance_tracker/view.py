@@ -426,7 +426,11 @@ def register_performance_callbacks(app: Dash) -> None:
         dataset["accept_prob"] = prob_series
 
         selected_scale = yaxis_scale if yaxis_scale in ("linear", "log") else "linear"
-        selected_bins = int(bin_count) if bin_count not in (None, 0) else 30
+        try:
+            parsed_bins = int(bin_count) if bin_count is not None else 30
+        except (TypeError, ValueError):
+            parsed_bins = 30
+        selected_bins = parsed_bins if parsed_bins > 0 else 30
         return _accept_prob_distribution(
             dataset, selected_bins, selected_scale, carrier, hours_range
         )
