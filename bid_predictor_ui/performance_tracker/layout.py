@@ -35,6 +35,19 @@ def _build_control_panel() -> html.Div:
             ),
             html.Div(
                 [
+                    html.Label("Carrier", style={"fontWeight": "600"}),
+                    dcc.Dropdown(
+                        id="performance-carrier",
+                        placeholder="All carriers",
+                        options=[],
+                        value="ALL",
+                        clearable=False,
+                    ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
                     html.Div(
                         [
                             html.Label("Window (hours)", style={"fontWeight": "600"}),

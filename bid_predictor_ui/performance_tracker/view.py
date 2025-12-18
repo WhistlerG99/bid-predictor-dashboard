@@ -409,6 +409,25 @@ def register_performance_callbacks(app: Dash) -> None:
         return _compute_hours_range(dataset)
 
     @callback(
+        Output("performance-carrier", "options"),
+        Output("performance-carrier", "value"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def populate_performance_carriers(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[List[Dict[str, str]], str]:
+        if not dataset_config:
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        options = _build_carrier_options(dataset)
+        return (options, "ALL")
+
+    @callback(
         Output("performance-status", "children"),
         Output("performance-actuals", "figure"),
         Output("performance-accuracy", "figure"),
@@ -420,12 +439,14 @@ def register_performance_callbacks(app: Dash) -> None:
         Input("performance-threshold", "value"),
         Input("performance-window", "value"),
         Input("performance-stride", "value"),
+        Input("performance-carrier", "value"),
     )
     def update_performance_charts(
         dataset_config: Optional[Mapping[str, object]],
         threshold: Optional[float],
         window: Optional[float],
         stride: Optional[float],
+        carrier: Optional[str],
     ) -> Tuple[object, go.Figure, go.Figure, go.Figure, go.Figure, go.Figure, go.Figure]:
         if not dataset_config:
             message = "Load a dataset in the acceptance explorer controls to view performance metrics."
@@ -457,6 +478,8 @@ def register_performance_callbacks(app: Dash) -> None:
 
         dataset = dataset.copy()
         dataset["accept_prob"] = prob_series
+        if carrier and carrier != "ALL" and "carrier_code" in dataset.columns:
+            dataset = dataset[dataset["carrier_code"].astype(str) == str(carrier)]
 
         metrics_df = _compute_bin_metrics(dataset, float(threshold or 0.0), float(window), float(stride))
         if metrics_df.empty:

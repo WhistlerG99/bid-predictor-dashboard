@@ -34,6 +34,14 @@ def test_accept_prob_bin_count_input_updates_on_change():
     assert input_component.debounce is False, "Bin input should emit changes immediately"
 
 
+def test_performance_carrier_dropdown_present():
+    controls = layout._build_control_panel()
+
+    carrier_dropdown = _find_component(controls, "performance-carrier")
+
+    assert carrier_dropdown is not None, "Carrier dropdown should be present in performance controls"
+
+
 def test_roc_pr_controls_present():
     section = layout._build_roc_pr_section()
 
