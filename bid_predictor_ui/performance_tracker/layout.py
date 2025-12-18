@@ -268,6 +268,14 @@ def _build_roc_pr_section() -> html.Div:
         style=CONTROL_CARD_STYLE,
     )
 
+    card_style = {
+        "backgroundColor": "#ffffff",
+        "borderRadius": "12px",
+        "boxShadow": "0 2px 10px rgba(0, 0, 0, 0.08)",
+        "padding": "1rem",
+        "flex": "1",
+    }
+
     charts = html.Div(
         [
             html.H4(
@@ -284,13 +292,7 @@ def _build_roc_pr_section() -> html.Div:
                             ),
                             dcc.Graph(id="roc-curve", figure={}, style={"height": "360px"}),
                         ],
-                        style={
-                            "backgroundColor": "#ffffff",
-                            "borderRadius": "12px",
-                            "boxShadow": "0 2px 10px rgba(0, 0, 0, 0.08)",
-                            "padding": "1rem",
-                            "flex": "1",
-                        },
+                        style=card_style,
                     ),
                     html.Div(
                         [
@@ -304,13 +306,35 @@ def _build_roc_pr_section() -> html.Div:
                                 style={"height": "360px"},
                             ),
                         ],
-                        style={
-                            "backgroundColor": "#ffffff",
-                            "borderRadius": "12px",
-                            "boxShadow": "0 2px 10px rgba(0, 0, 0, 0.08)",
-                            "padding": "1rem",
-                            "flex": "1",
-                        },
+                        style=card_style,
+                    ),
+                    html.Div(
+                        [
+                            html.H5(
+                                "Negative ROC curve",
+                                style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
+                            ),
+                            dcc.Graph(
+                                id="negative-roc-curve",
+                                figure={},
+                                style={"height": "360px"},
+                            ),
+                        ],
+                        style=card_style,
+                    ),
+                    html.Div(
+                        [
+                            html.H5(
+                                "Negative Precision-Recall curve",
+                                style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
+                            ),
+                            dcc.Graph(
+                                id="negative-precision-recall-curve",
+                                figure={},
+                                style={"height": "360px"},
+                            ),
+                        ],
+                        style=card_style,
                     ),
                 ],
                 style={

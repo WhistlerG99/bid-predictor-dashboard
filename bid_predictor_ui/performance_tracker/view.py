@@ -210,39 +210,101 @@ def _build_carrier_options(dataset: pd.DataFrame) -> List[Dict[str, str]]:
 
 def _roc_pr_curves(
     df: pd.DataFrame, carrier: Optional[str], hours_range: Optional[Iterable[float]]
-) -> Tuple[go.Figure, go.Figure]:
+) -> Tuple[go.Figure, go.Figure, go.Figure, go.Figure]:
     working = _filter_acceptance_rows(df, carrier, hours_range)
     working["accept_prob"] = pd.to_numeric(working.get("accept_prob"), errors="coerce")
     working = working.dropna(subset=["accept_prob", "offer_status"])
     if working.empty:
         message = "No rows matched the selected filters."
-        return _empty_figure(message), _empty_figure(message)
+        empty = _empty_figure(message)
+        return empty, empty, empty, empty
 
     y_true = (working["offer_status"] == "TICKETED").astype(int)
     y_score = working["accept_prob"]
 
     if y_true.nunique() < 2:
         message = "Both TICKETED and EXPIRED rows are required to plot the curves."
-        return _empty_figure(message), _empty_figure(message)
+        empty = _empty_figure(message)
+        return empty, empty, empty, empty
 
     fpr, tpr, roc_thresholds = sk_metrics.roc_curve(y_true, y_score)
-    pr_precision, pr_recall, pr_thresholds = sk_metrics.precision_recall_curve(
-        y_true, y_score
+
+    metrics = []
+    for threshold in roc_thresholds:
+        preds = y_score >= threshold
+        tp = int(np.sum((preds == 1) & (y_true == 1)))
+        fp = int(np.sum((preds == 1) & (y_true == 0)))
+        tn = int(np.sum((preds == 0) & (y_true == 0)))
+        fn = int(np.sum((preds == 0) & (y_true == 1)))
+
+        pos = tp + fn
+        neg = tn + fp
+
+        tpr_val = tp / pos if pos else np.nan
+        fpr_val = fp / neg if neg else np.nan
+        precision_val = tp / (tp + fp) if (tp + fp) else np.nan
+        recall_val = tpr_val
+        tnr_val = tn / neg if neg else np.nan
+        fnr_val = fn / pos if pos else np.nan
+        neg_precision_val = tn / (tn + fn) if (tn + fn) else np.nan
+        neg_recall_val = tnr_val
+
+        metrics.append(
+            (
+                threshold,
+                fpr_val,
+                tpr_val,
+                recall_val,
+                precision_val,
+                fnr_val,
+                tnr_val,
+                neg_recall_val,
+                neg_precision_val,
+            )
+        )
+
+    metrics_arr = np.array(metrics, dtype=float)
+
+    threshold_vals = metrics_arr[:, 0]
+    fpr_vals = metrics_arr[:, 1]
+    tpr_vals = metrics_arr[:, 2]
+    recall_vals = metrics_arr[:, 3]
+    precision_vals = metrics_arr[:, 4]
+    fnr_vals = metrics_arr[:, 5]
+    tnr_vals = metrics_arr[:, 6]
+    neg_recall_vals = metrics_arr[:, 7]
+    neg_precision_vals = metrics_arr[:, 8]
+
+    shared_customdata = np.column_stack(
+        (
+            threshold_vals,
+            fpr_vals,
+            tpr_vals,
+            recall_vals,
+            precision_vals,
+            fnr_vals,
+            tnr_vals,
+            neg_recall_vals,
+            neg_precision_vals,
+        )
     )
 
     roc_fig = go.Figure()
     roc_fig.add_trace(
         go.Scatter(
-            x=fpr,
-            y=tpr,
+            x=fpr_vals,
+            y=tpr_vals,
             mode="lines+markers",
             name="ROC",
             marker={"color": "#1b4965"},
             line={"color": "#1b4965"},
-            customdata=np.column_stack((roc_thresholds, fpr, tpr)),
+            customdata=shared_customdata,
             hovertemplate=(
-                "Threshold: %{customdata[0]:.2f}<br>"
-                "FPR: %{customdata[1]:.3f}<br>TPR: %{customdata[2]:.3f}<extra></extra>"
+                "Threshold: %{customdata[0]:.3f}<br>"
+                "FPR: %{x:.3f}<br>TPR: %{y:.3f}<br>"
+                "PR Recall: %{customdata[3]:.3f}<br>PR Precision: %{customdata[4]:.3f}<br>"
+                "Neg ROC FNR: %{customdata[5]:.3f}<br>Neg ROC TNR: %{customdata[6]:.3f}<br>"
+                "Neg PR Recall: %{customdata[7]:.3f}<br>Neg PR Precision: %{customdata[8]:.3f}<extra></extra>"
             ),
         )
     )
@@ -253,25 +315,22 @@ def _roc_pr_curves(
     roc_fig.update_xaxes(title_text="False positive rate", rangemode="tozero")
     roc_fig.update_yaxes(title_text="True positive rate", rangemode="tozero")
 
-    if pr_thresholds.size:
-        pr_thresholds_aligned = np.insert(pr_thresholds, 0, pr_thresholds[0])
-    else:
-        pr_thresholds_aligned = np.full_like(pr_precision, np.nan, dtype=float)
-    pr_customdata = np.column_stack((pr_thresholds_aligned, pr_recall, pr_precision))
-
     pr_fig = go.Figure()
     pr_fig.add_trace(
         go.Scatter(
-            x=pr_recall,
-            y=pr_precision,
+            x=recall_vals,
+            y=precision_vals,
             mode="lines+markers",
             name="Precision-Recall",
             marker={"color": "#f4a261"},
             line={"color": "#f4a261"},
-            customdata=pr_customdata,
+            customdata=shared_customdata,
             hovertemplate=(
-                "Threshold: %{customdata[0]:.2f}<br>"
-                "Recall: %{customdata[1]:.3f}<br>Precision: %{customdata[2]:.3f}<extra></extra>"
+                "Threshold: %{customdata[0]:.3f}<br>"
+                "Recall: %{x:.3f}<br>Precision: %{y:.3f}<br>"
+                "ROC FPR: %{customdata[1]:.3f}<br>ROC TPR: %{customdata[2]:.3f}<br>"
+                "Neg ROC FNR: %{customdata[5]:.3f}<br>Neg ROC TNR: %{customdata[6]:.3f}<br>"
+                "Neg PR Recall: %{customdata[7]:.3f}<br>Neg PR Precision: %{customdata[8]:.3f}<extra></extra>"
             ),
         )
     )
@@ -282,7 +341,59 @@ def _roc_pr_curves(
     pr_fig.update_xaxes(title_text="Recall", rangemode="tozero")
     pr_fig.update_yaxes(title_text="Precision", rangemode="tozero")
 
-    return roc_fig, pr_fig
+    neg_roc_fig = go.Figure()
+    neg_roc_fig.add_trace(
+        go.Scatter(
+            x=fnr_vals,
+            y=tnr_vals,
+            mode="lines+markers",
+            name="Negative ROC",
+            marker={"color": "#2a9d8f"},
+            line={"color": "#2a9d8f"},
+            customdata=shared_customdata,
+            hovertemplate=(
+                "Threshold: %{customdata[0]:.3f}<br>"
+                "FNR: %{x:.3f}<br>TNR: %{y:.3f}<br>"
+                "ROC FPR: %{customdata[1]:.3f}<br>ROC TPR: %{customdata[2]:.3f}<br>"
+                "PR Recall: %{customdata[3]:.3f}<br>PR Precision: %{customdata[4]:.3f}<br>"
+                "Neg PR Recall: %{customdata[7]:.3f}<br>Neg PR Precision: %{customdata[8]:.3f}<extra></extra>"
+            ),
+        )
+    )
+    neg_roc_fig.update_layout(
+        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
+    )
+    neg_roc_fig.update_xaxes(title_text="False negative rate", rangemode="tozero")
+    neg_roc_fig.update_yaxes(title_text="True negative rate", rangemode="tozero")
+
+    neg_pr_fig = go.Figure()
+    neg_pr_fig.add_trace(
+        go.Scatter(
+            x=neg_recall_vals,
+            y=neg_precision_vals,
+            mode="lines+markers",
+            name="Negative Precision-Recall",
+            marker={"color": "#6d597a"},
+            line={"color": "#6d597a"},
+            customdata=shared_customdata,
+            hovertemplate=(
+                "Threshold: %{customdata[0]:.3f}<br>"
+                "Negative Recall: %{x:.3f}<br>Negative Precision: %{y:.3f}<br>"
+                "ROC FPR: %{customdata[1]:.3f}<br>ROC TPR: %{customdata[2]:.3f}<br>"
+                "PR Recall: %{customdata[3]:.3f}<br>PR Precision: %{customdata[4]:.3f}<br>"
+                "Neg ROC FNR: %{customdata[5]:.3f}<br>Neg ROC TNR: %{customdata[6]:.3f}<extra></extra>"
+            ),
+        )
+    )
+    neg_pr_fig.update_layout(
+        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
+    )
+    neg_pr_fig.update_xaxes(title_text="Negative recall", rangemode="tozero")
+    neg_pr_fig.update_yaxes(title_text="Negative precision", rangemode="tozero")
+
+    return roc_fig, pr_fig, neg_roc_fig, neg_pr_fig
 
 
 def _compute_hours_range(dataset: pd.DataFrame) -> Tuple[float, float, List[float], Dict[int, str]]:
@@ -587,6 +698,8 @@ def register_performance_callbacks(app: Dash) -> None:
     @callback(
         Output("roc-curve", "figure"),
         Output("precision-recall-curve", "figure"),
+        Output("negative-roc-curve", "figure"),
+        Output("negative-precision-recall-curve", "figure"),
         Input("acceptance-dataset-path-store", "data"),
         Input("roc-pr-carrier", "value"),
         Input("roc-pr-hours-range", "value"),
@@ -595,11 +708,11 @@ def register_performance_callbacks(app: Dash) -> None:
         dataset_config: Optional[Mapping[str, object]],
         carrier: Optional[str],
         hours_range: Optional[Iterable[float]],
-    ) -> Tuple[go.Figure, go.Figure]:
+    ) -> Tuple[go.Figure, go.Figure, go.Figure, go.Figure]:
         if not dataset_config:
             message = "Load a dataset in the acceptance explorer controls to view the curves."
             empty = _empty_figure(message)
-            return empty, empty
+            return empty, empty, empty, empty
 
         try:
             dataset = load_acceptance_dataset(dataset_config)
@@ -613,7 +726,7 @@ def register_performance_callbacks(app: Dash) -> None:
         )
         if prob_series is None:
             empty = _empty_figure("Dataset must include an 'accept_prob' column.")
-            return empty, empty
+            return empty, empty, empty, empty
 
         dataset = dataset.copy()
         dataset["accept_prob"] = prob_series
