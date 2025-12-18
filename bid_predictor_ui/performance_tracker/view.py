@@ -153,6 +153,45 @@ def _actuals_chart(x: List[str], positives: List[int], negatives: List[int]) -> 
     return fig
 
 
+def _accept_prob_distribution(
+    df: pd.DataFrame, bin_size: float, yaxis_scale: str
+) -> go.Figure:
+    working = df.copy()
+    working = working[working["offer_status"].isin(["TICKETED", "EXPIRED"])]
+    working["accept_prob"] = pd.to_numeric(working["accept_prob"], errors="coerce")
+    working = working.dropna(subset=["accept_prob"])
+    if working.empty:
+        return _empty_figure("No rows matched the selected filters.")
+
+    fig = go.Figure()
+    colors = {"TICKETED": "#1b4965", "EXPIRED": "#ff6b6b"}
+    for status, color in colors.items():
+        subset = working[working["offer_status"] == status]
+        if subset.empty:
+            continue
+        fig.add_trace(
+            go.Histogram(
+                x=subset["accept_prob"],
+                name=status,
+                marker_color=color,
+                opacity=0.65,
+                xbins={"size": max(bin_size, 0.1)},
+            )
+        )
+
+    if not fig.data:
+        return _empty_figure("No rows matched the selected filters.")
+
+    fig.update_layout(
+        barmode="overlay",
+        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
+    )
+    fig.update_xaxes(title_text="Acceptance probability (%)", rangemode="tozero")
+    fig.update_yaxes(title_text="Count", type=yaxis_scale, rangemode="tozero")
+    return fig
+
+
 def register_performance_callbacks(app: Dash) -> None:
     """Register callbacks powering the performance tracker tab."""
 
@@ -264,6 +303,40 @@ def register_performance_callbacks(app: Dash) -> None:
             negative_recall_chart,
             negative_precision_chart,
         )
+
+    @callback(
+        Output("accept-prob-distribution", "figure"),
+        Input("acceptance-dataset-path-store", "data"),
+        Input("accept-prob-bin-size", "value"),
+        Input("accept-prob-scale", "value"),
+    )
+    def update_accept_prob_distribution(
+        dataset_config: Optional[Mapping[str, object]],
+        bin_size: Optional[float],
+        yaxis_scale: Optional[str],
+    ) -> go.Figure:
+        if not dataset_config:
+            return _empty_figure(
+                "Load a dataset in the acceptance explorer controls to view the distribution."
+            )
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception as exc:  # pragma: no cover - user feedback
+            return _empty_figure(f"Failed to load dataset: {exc}")
+
+        prob_series = _select_first_series(
+            dataset, ["accept_prob", "acceptance_prob", "Acceptance Probability"]
+        )
+        if prob_series is None:
+            return _empty_figure("Dataset must include an 'accept_prob' column.")
+
+        dataset = dataset.copy()
+        dataset["accept_prob"] = prob_series
+
+        selected_scale = yaxis_scale if yaxis_scale in ("linear", "log") else "linear"
+        selected_bin = float(bin_size) if bin_size not in (None, 0) else 5.0
+        return _accept_prob_distribution(dataset, selected_bin, selected_scale)
 
 
 __all__ = ["register_performance_callbacks"]

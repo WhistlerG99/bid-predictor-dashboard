@@ -110,6 +110,84 @@ def _build_chart_grid() -> html.Div:
     )
 
 
+def _build_distribution_section() -> html.Div:
+    """Create the acceptance probability distribution controls and chart."""
+
+    control_panel = html.Div(
+        [
+            html.H4(
+                "Display settings", style={"margin": "0 0 0.75rem 0", "color": "#1b4965"}
+            ),
+            html.Div(
+                [
+                    html.Label("Y-axis scale", style={"fontWeight": "600"}),
+                    dcc.RadioItems(
+                        id="accept-prob-scale",
+                        options=[
+                            {"label": "Linear", "value": "linear"},
+                            {"label": "Log", "value": "log"},
+                        ],
+                        value="linear",
+                        labelStyle={"display": "inline-block", "marginRight": "1rem"},
+                        style={"marginBottom": "1rem"},
+                    ),
+                ]
+            ),
+            html.Div(
+                [
+                    html.Label("Bin size", style={"fontWeight": "600"}),
+                    dcc.Slider(
+                        id="accept-prob-bin-size",
+                        min=1,
+                        max=20,
+                        step=1,
+                        value=5,
+                        marks={1: "1", 5: "5", 10: "10", 15: "15", 20: "20"},
+                        tooltip={"placement": "bottom", "always_visible": False},
+                    ),
+                ]
+            ),
+        ],
+        style=CONTROL_CARD_STYLE,
+    )
+
+    return html.Div(
+        [
+            html.H3(
+                "Acceptance Probability Distribution",
+                style={"margin": "0 0 0.75rem 0", "color": "#1b4965"},
+            ),
+            html.Div(
+                [
+                    html.Div(control_panel, style={"flex": "0 0 320px"}),
+                    html.Div(
+                        [
+                            html.H4(
+                                "Histogram by offer status",
+                                style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
+                            ),
+                            dcc.Graph(
+                                id="accept-prob-distribution",
+                                figure={},
+                                style={"height": "420px"},
+                            ),
+                        ],
+                        style={
+                            "backgroundColor": "#ffffff",
+                            "borderRadius": "12px",
+                            "boxShadow": "0 2px 10px rgba(0, 0, 0, 0.08)",
+                            "padding": "1rem",
+                            "flex": "1",
+                        },
+                    ),
+                ],
+                style={"display": "flex", "gap": "1rem", "alignItems": "stretch"},
+            ),
+        ],
+        style={"marginTop": "1.5rem"},
+    )
+
+
 def build_performance_tab() -> dcc.Tab:
     """Compose the performance tracker tab."""
 
@@ -138,6 +216,7 @@ def build_performance_tab() -> dcc.Tab:
                         style={"marginBottom": "1rem", "color": "#c1121f", "fontWeight": 600},
                     ),
                     _build_chart_grid(),
+                    _build_distribution_section(),
                 ],
                 style={"padding": "1rem"},
             )
