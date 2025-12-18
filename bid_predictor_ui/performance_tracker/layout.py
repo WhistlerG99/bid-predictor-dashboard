@@ -141,6 +141,7 @@ def _build_distribution_section() -> html.Div:
                         type="number",
                         min=1,
                         step=1,
+                        debounce=False,
                         value=30,
                         style={"width": "100%"},
                     ),
