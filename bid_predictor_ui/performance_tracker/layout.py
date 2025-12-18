@@ -162,14 +162,15 @@ def _build_distribution_section() -> html.Div:
             ),
             html.Div(
                 [
-                    html.Label("Max hours before departure", style={"fontWeight": "600"}),
-                    dcc.Input(
-                        id="accept-prob-max-hours",
-                        type="number",
-                        step=1,
+                    html.Label("Hours before departure", style={"fontWeight": "600"}),
+                    dcc.RangeSlider(
+                        id="accept-prob-hours-range",
                         min=0,
-                        placeholder="All hours",
-                        style={"width": "100%"},
+                        max=100,
+                        step=1,
+                        value=[0, 100],
+                        allowCross=False,
+                        tooltip={"placement": "bottom", "always_visible": False},
                     ),
                 ]
             ),

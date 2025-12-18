@@ -158,17 +158,23 @@ def _accept_prob_distribution(
     bin_count: int,
     yaxis_scale: str,
     carrier: Optional[str],
-    max_hours: Optional[float],
+    hours_range: Optional[Iterable[float]],
 ) -> go.Figure:
     working = df.copy()
     working = working[working["offer_status"].isin(["TICKETED", "EXPIRED"])]
     if carrier and carrier != "ALL" and "carrier_code" in working.columns:
         working = working[working["carrier_code"].astype(str) == str(carrier)]
     working["hours_before_departure"] = pd.to_numeric(
-        working.get("hours_before_departure"), errors="coerce"
+        working.get("hours_before_departure", pd.Series(dtype=float)), errors="coerce"
     )
-    if max_hours not in (None, ""):
-        working = working[working["hours_before_departure"] <= float(max_hours)]
+    if hours_range is not None:
+        try:
+            lower, upper = float(hours_range[0]), float(hours_range[1])
+            working = working[
+                working["hours_before_departure"].between(lower, upper, inclusive="both")
+            ]
+        except (TypeError, ValueError, IndexError):
+            pass
     working["accept_prob"] = pd.to_numeric(working["accept_prob"], errors="coerce")
     working = working.dropna(subset=["accept_prob"])
     if working.empty:
@@ -215,6 +221,25 @@ def _build_carrier_options(dataset: pd.DataFrame) -> List[Dict[str, str]]:
     return options
 
 
+def _compute_hours_range(dataset: pd.DataFrame) -> Tuple[float, float, List[float], Dict[int, str]]:
+    default_min, default_max = 0.0, 100.0
+    default_marks = {int(default_min): "0h", int(default_max): "100h"}
+    if dataset.empty or "hours_before_departure" not in dataset.columns:
+        return default_min, default_max, [default_min, default_max], default_marks
+
+    hours = pd.to_numeric(dataset["hours_before_departure"], errors="coerce").dropna()
+    if hours.empty:
+        return default_min, default_max, [default_min, default_max], default_marks
+
+    min_hour = float(np.floor(hours.min()))
+    max_hour = float(np.ceil(hours.max()))
+    if min_hour == max_hour:
+        max_hour = min_hour + 1.0
+
+    marks = {int(min_hour): f"{min_hour:.0f}h", int(max_hour): f"{max_hour:.0f}h"}
+    return min_hour, max_hour, [min_hour, max_hour], marks
+
+
 def register_performance_callbacks(app: Dash) -> None:
     """Register callbacks powering the performance tracker tab."""
 
@@ -236,6 +261,26 @@ def register_performance_callbacks(app: Dash) -> None:
 
         options = _build_carrier_options(dataset)
         return (options, "ALL")
+
+    @callback(
+        Output("accept-prob-hours-range", "min"),
+        Output("accept-prob-hours-range", "max"),
+        Output("accept-prob-hours-range", "value"),
+        Output("accept-prob-hours-range", "marks"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def configure_accept_prob_hours_range(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[float, float, List[float], Dict[int, str]]:
+        if not dataset_config:
+            return _compute_hours_range(pd.DataFrame())
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return _compute_hours_range(pd.DataFrame())
+
+        return _compute_hours_range(dataset)
 
     @callback(
         Output("performance-status", "children"),
@@ -352,14 +397,14 @@ def register_performance_callbacks(app: Dash) -> None:
         Input("accept-prob-bin-count", "value"),
         Input("accept-prob-scale", "value"),
         Input("accept-prob-carrier", "value"),
-        Input("accept-prob-max-hours", "value"),
+        Input("accept-prob-hours-range", "value"),
     )
     def update_accept_prob_distribution(
         dataset_config: Optional[Mapping[str, object]],
         bin_count: Optional[float],
         yaxis_scale: Optional[str],
         carrier: Optional[str],
-        max_hours: Optional[float],
+        hours_range: Optional[Iterable[float]],
     ) -> go.Figure:
         if not dataset_config:
             return _empty_figure(
@@ -383,7 +428,7 @@ def register_performance_callbacks(app: Dash) -> None:
         selected_scale = yaxis_scale if yaxis_scale in ("linear", "log") else "linear"
         selected_bins = int(bin_count) if bin_count not in (None, 0) else 30
         return _accept_prob_distribution(
-            dataset, selected_bins, selected_scale, carrier, max_hours
+            dataset, selected_bins, selected_scale, carrier, hours_range
         )
 
 
