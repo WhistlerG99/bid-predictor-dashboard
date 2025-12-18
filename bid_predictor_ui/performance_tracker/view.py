@@ -8,6 +8,7 @@ import pandas as pd
 from dash import Dash, Input, Output, callback
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
+from sklearn import metrics as sk_metrics
 
 from ..acceptance_explorer import load_acceptance_dataset
 
@@ -160,21 +161,7 @@ def _accept_prob_distribution(
     carrier: Optional[str],
     hours_range: Optional[Iterable[float]],
 ) -> go.Figure:
-    working = df.copy()
-    working = working[working["offer_status"].isin(["TICKETED", "EXPIRED"])]
-    if carrier and carrier != "ALL" and "carrier_code" in working.columns:
-        working = working[working["carrier_code"].astype(str) == str(carrier)]
-    working["hours_before_departure"] = pd.to_numeric(
-        working.get("hours_before_departure", pd.Series(dtype=float)), errors="coerce"
-    )
-    if hours_range is not None:
-        try:
-            lower, upper = float(hours_range[0]), float(hours_range[1])
-            working = working[
-                working["hours_before_departure"].between(lower, upper, inclusive="both")
-            ]
-        except (TypeError, ValueError, IndexError):
-            pass
+    working = _filter_acceptance_rows(df, carrier, hours_range)
     working["accept_prob"] = pd.to_numeric(working["accept_prob"], errors="coerce")
     working = working.dropna(subset=["accept_prob"])
     if working.empty:
@@ -221,6 +208,83 @@ def _build_carrier_options(dataset: pd.DataFrame) -> List[Dict[str, str]]:
     return options
 
 
+def _roc_pr_curves(
+    df: pd.DataFrame, carrier: Optional[str], hours_range: Optional[Iterable[float]]
+) -> Tuple[go.Figure, go.Figure]:
+    working = _filter_acceptance_rows(df, carrier, hours_range)
+    working["accept_prob"] = pd.to_numeric(working.get("accept_prob"), errors="coerce")
+    working = working.dropna(subset=["accept_prob", "offer_status"])
+    if working.empty:
+        message = "No rows matched the selected filters."
+        return _empty_figure(message), _empty_figure(message)
+
+    y_true = (working["offer_status"] == "TICKETED").astype(int)
+    y_score = working["accept_prob"]
+
+    if y_true.nunique() < 2:
+        message = "Both TICKETED and EXPIRED rows are required to plot the curves."
+        return _empty_figure(message), _empty_figure(message)
+
+    fpr, tpr, roc_thresholds = sk_metrics.roc_curve(y_true, y_score)
+    pr_precision, pr_recall, pr_thresholds = sk_metrics.precision_recall_curve(
+        y_true, y_score
+    )
+
+    roc_fig = go.Figure()
+    roc_fig.add_trace(
+        go.Scatter(
+            x=fpr,
+            y=tpr,
+            mode="lines+markers",
+            name="ROC",
+            marker={"color": "#1b4965"},
+            line={"color": "#1b4965"},
+            customdata=np.column_stack((roc_thresholds, fpr, tpr)),
+            hovertemplate=(
+                "Threshold: %{customdata[0]:.2f}<br>"
+                "FPR: %{customdata[1]:.3f}<br>TPR: %{customdata[2]:.3f}<extra></extra>"
+            ),
+        )
+    )
+    roc_fig.update_layout(
+        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
+    )
+    roc_fig.update_xaxes(title_text="False positive rate", rangemode="tozero")
+    roc_fig.update_yaxes(title_text="True positive rate", rangemode="tozero")
+
+    if pr_thresholds.size:
+        pr_thresholds_aligned = np.insert(pr_thresholds, 0, pr_thresholds[0])
+    else:
+        pr_thresholds_aligned = np.full_like(pr_precision, np.nan, dtype=float)
+    pr_customdata = np.column_stack((pr_thresholds_aligned, pr_recall, pr_precision))
+
+    pr_fig = go.Figure()
+    pr_fig.add_trace(
+        go.Scatter(
+            x=pr_recall,
+            y=pr_precision,
+            mode="lines+markers",
+            name="Precision-Recall",
+            marker={"color": "#f4a261"},
+            line={"color": "#f4a261"},
+            customdata=pr_customdata,
+            hovertemplate=(
+                "Threshold: %{customdata[0]:.2f}<br>"
+                "Recall: %{customdata[1]:.3f}<br>Precision: %{customdata[2]:.3f}<extra></extra>"
+            ),
+        )
+    )
+    pr_fig.update_layout(
+        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
+    )
+    pr_fig.update_xaxes(title_text="Recall", rangemode="tozero")
+    pr_fig.update_yaxes(title_text="Precision", rangemode="tozero")
+
+    return roc_fig, pr_fig
+
+
 def _compute_hours_range(dataset: pd.DataFrame) -> Tuple[float, float, List[float], Dict[int, str]]:
     default_min, default_max = 0.0, 100.0
     default_marks = {int(default_min): "0h", int(default_max): "100h"}
@@ -238,6 +302,29 @@ def _compute_hours_range(dataset: pd.DataFrame) -> Tuple[float, float, List[floa
 
     marks = {int(min_hour): f"{min_hour:.0f}h", int(max_hour): f"{max_hour:.0f}h"}
     return min_hour, max_hour, [min_hour, max_hour], marks
+
+
+def _filter_acceptance_rows(
+    dataset: pd.DataFrame,
+    carrier: Optional[str],
+    hours_range: Optional[Iterable[float]],
+) -> pd.DataFrame:
+    working = dataset.copy()
+    working = working[working["offer_status"].isin(["TICKETED", "EXPIRED"])]
+    if carrier and carrier != "ALL" and "carrier_code" in working.columns:
+        working = working[working["carrier_code"].astype(str) == str(carrier)]
+    working["hours_before_departure"] = pd.to_numeric(
+        working.get("hours_before_departure", pd.Series(dtype=float)), errors="coerce"
+    )
+    if hours_range is not None:
+        try:
+            lower, upper = float(hours_range[0]), float(hours_range[1])
+            working = working[
+                working["hours_before_departure"].between(lower, upper, inclusive="both")
+            ]
+        except (TypeError, ValueError, IndexError):
+            pass
+    return working
 
 
 def register_performance_callbacks(app: Dash) -> None:
@@ -270,6 +357,45 @@ def register_performance_callbacks(app: Dash) -> None:
         Input("acceptance-dataset-path-store", "data"),
     )
     def configure_accept_prob_hours_range(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[float, float, List[float], Dict[int, str]]:
+        if not dataset_config:
+            return _compute_hours_range(pd.DataFrame())
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return _compute_hours_range(pd.DataFrame())
+
+        return _compute_hours_range(dataset)
+
+    @callback(
+        Output("roc-pr-carrier", "options"),
+        Output("roc-pr-carrier", "value"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def populate_roc_pr_carriers(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[List[Dict[str, str]], str]:
+        if not dataset_config:
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        options = _build_carrier_options(dataset)
+        return (options, "ALL")
+
+    @callback(
+        Output("roc-pr-hours-range", "min"),
+        Output("roc-pr-hours-range", "max"),
+        Output("roc-pr-hours-range", "value"),
+        Output("roc-pr-hours-range", "marks"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def configure_roc_pr_hours_range(
         dataset_config: Optional[Mapping[str, object]]
     ) -> Tuple[float, float, List[float], Dict[int, str]]:
         if not dataset_config:
@@ -434,6 +560,42 @@ def register_performance_callbacks(app: Dash) -> None:
         return _accept_prob_distribution(
             dataset, selected_bins, selected_scale, carrier, hours_range
         )
+
+    @callback(
+        Output("roc-curve", "figure"),
+        Output("precision-recall-curve", "figure"),
+        Input("acceptance-dataset-path-store", "data"),
+        Input("roc-pr-carrier", "value"),
+        Input("roc-pr-hours-range", "value"),
+    )
+    def update_roc_pr_curves(
+        dataset_config: Optional[Mapping[str, object]],
+        carrier: Optional[str],
+        hours_range: Optional[Iterable[float]],
+    ) -> Tuple[go.Figure, go.Figure]:
+        if not dataset_config:
+            message = "Load a dataset in the acceptance explorer controls to view the curves."
+            empty = _empty_figure(message)
+            return empty, empty
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception as exc:  # pragma: no cover - user feedback
+            message = f"Failed to load dataset: {exc}"
+            empty = _empty_figure(message)
+            return empty, empty
+
+        prob_series = _select_first_series(
+            dataset, ["accept_prob", "acceptance_prob", "Acceptance Probability"]
+        )
+        if prob_series is None:
+            empty = _empty_figure("Dataset must include an 'accept_prob' column.")
+            return empty, empty
+
+        dataset = dataset.copy()
+        dataset["accept_prob"] = prob_series
+
+        return _roc_pr_curves(dataset, carrier, hours_range)
 
 
 __all__ = ["register_performance_callbacks"]

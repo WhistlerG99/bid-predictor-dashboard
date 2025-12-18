@@ -216,6 +216,117 @@ def _build_distribution_section() -> html.Div:
     )
 
 
+def _build_roc_pr_section() -> html.Div:
+    """Create the ROC and precision-recall controls and charts."""
+
+    control_panel = html.Div(
+        [
+            html.H4(
+                "Filter settings", style={"margin": "0 0 0.75rem 0", "color": "#1b4965"}
+            ),
+            html.Div(
+                [
+                    html.Label("Carrier", style={"fontWeight": "600"}),
+                    dcc.Dropdown(
+                        id="roc-pr-carrier",
+                        placeholder="All carriers",
+                        options=[],
+                        value="ALL",
+                        clearable=False,
+                    ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
+                    html.Label("Hours before departure", style={"fontWeight": "600"}),
+                    dcc.RangeSlider(
+                        id="roc-pr-hours-range",
+                        min=0,
+                        max=100,
+                        step=1,
+                        value=[0, 100],
+                        allowCross=False,
+                        tooltip={"placement": "bottom", "always_visible": False},
+                    ),
+                ]
+            ),
+        ],
+        style=CONTROL_CARD_STYLE,
+    )
+
+    charts = html.Div(
+        [
+            html.H4(
+                "ROC and Precision-Recall Curves",
+                style={"margin": "0 0 0.75rem 0", "color": "#1b4965"},
+            ),
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.H5(
+                                "ROC curve",
+                                style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
+                            ),
+                            dcc.Graph(id="roc-curve", figure={}, style={"height": "360px"}),
+                        ],
+                        style={
+                            "backgroundColor": "#ffffff",
+                            "borderRadius": "12px",
+                            "boxShadow": "0 2px 10px rgba(0, 0, 0, 0.08)",
+                            "padding": "1rem",
+                            "flex": "1",
+                        },
+                    ),
+                    html.Div(
+                        [
+                            html.H5(
+                                "Precision-Recall curve",
+                                style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
+                            ),
+                            dcc.Graph(
+                                id="precision-recall-curve",
+                                figure={},
+                                style={"height": "360px"},
+                            ),
+                        ],
+                        style={
+                            "backgroundColor": "#ffffff",
+                            "borderRadius": "12px",
+                            "boxShadow": "0 2px 10px rgba(0, 0, 0, 0.08)",
+                            "padding": "1rem",
+                            "flex": "1",
+                        },
+                    ),
+                ],
+                style={
+                    "display": "grid",
+                    "gridTemplateColumns": "repeat(auto-fit, minmax(280px, 1fr))",
+                    "gap": "1rem",
+                },
+            ),
+        ],
+        style={"flex": "1"},
+    )
+
+    return html.Div(
+        [
+            html.H3(
+                "ROC and Precision-Recall Curves",
+                style={"margin": "1.5rem 0 0.75rem 0", "color": "#1b4965"},
+            ),
+            html.Div(
+                [
+                    html.Div(control_panel, style={"flex": "0 0 320px"}),
+                    charts,
+                ],
+                style={"display": "flex", "gap": "1rem", "alignItems": "stretch"},
+            ),
+        ]
+    )
+
+
 def build_performance_tab() -> dcc.Tab:
     """Compose the performance tracker tab."""
 
@@ -245,6 +356,7 @@ def build_performance_tab() -> dcc.Tab:
                     ),
                     _build_chart_grid(),
                     _build_distribution_section(),
+                    _build_roc_pr_section(),
                 ],
                 style={"padding": "1rem"},
             )
