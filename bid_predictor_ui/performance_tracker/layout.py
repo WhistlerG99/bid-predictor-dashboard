@@ -135,15 +135,41 @@ def _build_distribution_section() -> html.Div:
             ),
             html.Div(
                 [
-                    html.Label("Bin size", style={"fontWeight": "600"}),
-                    dcc.Slider(
-                        id="accept-prob-bin-size",
+                    html.Label("Number of bins", style={"fontWeight": "600"}),
+                    dcc.Input(
+                        id="accept-prob-bin-count",
+                        type="number",
                         min=1,
-                        max=20,
+                        step=10,
+                        value=30,
+                        style={"width": "100%"},
+                    ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
+                    html.Label("Carrier", style={"fontWeight": "600"}),
+                    dcc.Dropdown(
+                        id="accept-prob-carrier",
+                        placeholder="All carriers",
+                        options=[],
+                        value="ALL",
+                        clearable=False,
+                    ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
+                    html.Label("Max hours before departure", style={"fontWeight": "600"}),
+                    dcc.Input(
+                        id="accept-prob-max-hours",
+                        type="number",
                         step=1,
-                        value=5,
-                        marks={1: "1", 5: "5", 10: "10", 15: "15", 20: "20"},
-                        tooltip={"placement": "bottom", "always_visible": False},
+                        min=0,
+                        placeholder="All hours",
+                        style={"width": "100%"},
                     ),
                 ]
             ),

@@ -154,10 +154,21 @@ def _actuals_chart(x: List[str], positives: List[int], negatives: List[int]) -> 
 
 
 def _accept_prob_distribution(
-    df: pd.DataFrame, bin_size: float, yaxis_scale: str
+    df: pd.DataFrame,
+    bin_count: int,
+    yaxis_scale: str,
+    carrier: Optional[str],
+    max_hours: Optional[float],
 ) -> go.Figure:
     working = df.copy()
     working = working[working["offer_status"].isin(["TICKETED", "EXPIRED"])]
+    if carrier and carrier != "ALL" and "carrier_code" in working.columns:
+        working = working[working["carrier_code"].astype(str) == str(carrier)]
+    working["hours_before_departure"] = pd.to_numeric(
+        working.get("hours_before_departure"), errors="coerce"
+    )
+    if max_hours not in (None, ""):
+        working = working[working["hours_before_departure"] <= float(max_hours)]
     working["accept_prob"] = pd.to_numeric(working["accept_prob"], errors="coerce")
     working = working.dropna(subset=["accept_prob"])
     if working.empty:
@@ -175,7 +186,7 @@ def _accept_prob_distribution(
                 name=status,
                 marker_color=color,
                 opacity=0.65,
-                xbins={"size": max(bin_size, 0.1)},
+                nbinsx=max(int(bin_count), 1),
             )
         )
 
@@ -192,8 +203,39 @@ def _accept_prob_distribution(
     return fig
 
 
+def _build_carrier_options(dataset: pd.DataFrame) -> List[Dict[str, str]]:
+    options = [{"label": "All", "value": "ALL"}]
+    if dataset.empty or "carrier_code" not in dataset.columns:
+        return options
+
+    carriers = (
+        dataset["carrier_code"].astype(str).dropna().drop_duplicates().sort_values()
+    )
+    options.extend({"label": str(code), "value": str(code)} for code in carriers)
+    return options
+
+
 def register_performance_callbacks(app: Dash) -> None:
     """Register callbacks powering the performance tracker tab."""
+
+    @callback(
+        Output("accept-prob-carrier", "options"),
+        Output("accept-prob-carrier", "value"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def populate_accept_prob_carriers(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[List[Dict[str, str]], str]:
+        if not dataset_config:
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        options = _build_carrier_options(dataset)
+        return (options, "ALL")
 
     @callback(
         Output("performance-status", "children"),
@@ -307,13 +349,17 @@ def register_performance_callbacks(app: Dash) -> None:
     @callback(
         Output("accept-prob-distribution", "figure"),
         Input("acceptance-dataset-path-store", "data"),
-        Input("accept-prob-bin-size", "value"),
+        Input("accept-prob-bin-count", "value"),
         Input("accept-prob-scale", "value"),
+        Input("accept-prob-carrier", "value"),
+        Input("accept-prob-max-hours", "value"),
     )
     def update_accept_prob_distribution(
         dataset_config: Optional[Mapping[str, object]],
-        bin_size: Optional[float],
+        bin_count: Optional[float],
         yaxis_scale: Optional[str],
+        carrier: Optional[str],
+        max_hours: Optional[float],
     ) -> go.Figure:
         if not dataset_config:
             return _empty_figure(
@@ -335,8 +381,10 @@ def register_performance_callbacks(app: Dash) -> None:
         dataset["accept_prob"] = prob_series
 
         selected_scale = yaxis_scale if yaxis_scale in ("linear", "log") else "linear"
-        selected_bin = float(bin_size) if bin_size not in (None, 0) else 5.0
-        return _accept_prob_distribution(dataset, selected_bin, selected_scale)
+        selected_bins = int(bin_count) if bin_count not in (None, 0) else 30
+        return _accept_prob_distribution(
+            dataset, selected_bins, selected_scale, carrier, max_hours
+        )
 
 
 __all__ = ["register_performance_callbacks"]
