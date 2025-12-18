@@ -47,6 +47,7 @@ def test_roc_pr_controls_present():
 
     carrier_dropdown = _find_component(section, "roc-pr-carrier")
     hours_slider = _find_component(section, "roc-pr-hours-range")
+    threshold_input = _find_component(section, "roc-pr-threshold-points")
     roc_graph = _find_component(section, "roc-curve")
     pr_graph = _find_component(section, "precision-recall-curve")
     neg_roc_graph = _find_component(section, "negative-roc-curve")
@@ -54,6 +55,7 @@ def test_roc_pr_controls_present():
 
     assert carrier_dropdown is not None, "Carrier dropdown should be present"
     assert hours_slider is not None, "Hours slider should be present"
+    assert threshold_input is not None, "Threshold points input should be present"
     assert roc_graph is not None, "ROC graph should be present"
     assert pr_graph is not None, "Precision-recall graph should be present"
     assert neg_roc_graph is not None, "Negative ROC graph should be present"

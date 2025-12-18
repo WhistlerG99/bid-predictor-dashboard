@@ -262,6 +262,20 @@ def _build_roc_pr_section() -> html.Div:
                         allowCross=False,
                         tooltip={"placement": "bottom", "always_visible": False},
                     ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
+                    html.Label("Threshold points", style={"fontWeight": "600"}),
+                    dcc.Input(
+                        id="roc-pr-threshold-points",
+                        type="number",
+                        min=2,
+                        step=10,
+                        value=200,
+                        style={"width": "100%"},
+                    ),
                 ]
             ),
         ],

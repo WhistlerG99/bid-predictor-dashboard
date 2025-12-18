@@ -8,9 +8,11 @@ import pandas as pd
 from dash import Dash, Input, Output, callback
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
-from sklearn import metrics as sk_metrics
 
 from ..acceptance_explorer import load_acceptance_dataset
+
+
+DEFAULT_THRESHOLD_POINTS = 200
 
 
 def _select_first_series(dataset: pd.DataFrame, columns: Iterable[str]) -> Optional[pd.Series]:
@@ -208,8 +210,37 @@ def _build_carrier_options(dataset: pd.DataFrame) -> List[Dict[str, str]]:
     return options
 
 
+def _generate_thresholds(scores: np.ndarray, requested_points: int) -> np.ndarray:
+    valid_scores = scores[np.isfinite(scores)]
+    if valid_scores.size == 0:
+        return np.array([], dtype=float)
+
+    min_score = float(np.min(valid_scores))
+    max_score = float(np.max(valid_scores))
+    if not np.isfinite(min_score) or not np.isfinite(max_score):
+        return np.array([], dtype=float)
+
+    target_points = max(int(requested_points), 2)
+    quantiles = np.linspace(0, 1, num=target_points)
+    sampled = np.quantile(np.unique(valid_scores), quantiles)
+
+    padding = max(1e-6, (max_score - min_score) * 1e-3)
+    thresholds = np.concatenate(
+        ([max_score + padding], sampled[::-1], [min_score - padding])
+    )
+
+    deduped: List[float] = []
+    for value in thresholds:
+        if not deduped or not np.isclose(value, deduped[-1]):
+            deduped.append(float(value))
+    return np.array(deduped, dtype=float)
+
+
 def _roc_pr_curves(
-    df: pd.DataFrame, carrier: Optional[str], hours_range: Optional[Iterable[float]]
+    df: pd.DataFrame,
+    carrier: Optional[str],
+    hours_range: Optional[Iterable[float]],
+    threshold_points: int,
 ) -> Tuple[go.Figure, go.Figure, go.Figure, go.Figure]:
     working = _filter_acceptance_rows(df, carrier, hours_range)
     working["accept_prob"] = pd.to_numeric(working.get("accept_prob"), errors="coerce")
@@ -227,15 +258,21 @@ def _roc_pr_curves(
         empty = _empty_figure(message)
         return empty, empty, empty, empty
 
-    fpr, tpr, roc_thresholds = sk_metrics.roc_curve(y_true, y_score)
+    thresholds = _generate_thresholds(y_score.to_numpy(dtype=float), threshold_points)
+    if thresholds.size == 0:
+        empty = _empty_figure("No valid thresholds available to plot curves.")
+        return empty, empty, empty, empty
 
-    metrics = []
-    for threshold in roc_thresholds:
-        preds = y_score >= threshold
-        tp = int(np.sum((preds == 1) & (y_true == 1)))
-        fp = int(np.sum((preds == 1) & (y_true == 0)))
-        tn = int(np.sum((preds == 0) & (y_true == 0)))
-        fn = int(np.sum((preds == 0) & (y_true == 1)))
+    labels = y_true.to_numpy(dtype=int)
+    scores = y_score.to_numpy(dtype=float)
+
+    metrics: List[Tuple[float, float, float, float, float, float, float, float, float]] = []
+    for threshold in thresholds:
+        preds = scores >= threshold
+        tp = int(np.sum((preds == 1) & (labels == 1)))
+        fp = int(np.sum((preds == 1) & (labels == 0)))
+        tn = int(np.sum((preds == 0) & (labels == 0)))
+        fn = int(np.sum((preds == 0) & (labels == 1)))
 
         pos = tp + fn
         neg = tn + fp
@@ -294,7 +331,7 @@ def _roc_pr_curves(
         go.Scatter(
             x=fpr_vals,
             y=tpr_vals,
-            mode="lines+markers",
+            mode="lines",
             name="ROC",
             marker={"color": "#1b4965"},
             line={"color": "#1b4965"},
@@ -320,7 +357,7 @@ def _roc_pr_curves(
         go.Scatter(
             x=recall_vals,
             y=precision_vals,
-            mode="lines+markers",
+            mode="lines",
             name="Precision-Recall",
             marker={"color": "#f4a261"},
             line={"color": "#f4a261"},
@@ -346,7 +383,7 @@ def _roc_pr_curves(
         go.Scatter(
             x=fnr_vals,
             y=tnr_vals,
-            mode="lines+markers",
+            mode="lines",
             name="Negative ROC",
             marker={"color": "#2a9d8f"},
             line={"color": "#2a9d8f"},
@@ -372,7 +409,7 @@ def _roc_pr_curves(
         go.Scatter(
             x=neg_recall_vals,
             y=neg_precision_vals,
-            mode="lines+markers",
+            mode="lines",
             name="Negative Precision-Recall",
             marker={"color": "#6d597a"},
             line={"color": "#6d597a"},
@@ -703,11 +740,13 @@ def register_performance_callbacks(app: Dash) -> None:
         Input("acceptance-dataset-path-store", "data"),
         Input("roc-pr-carrier", "value"),
         Input("roc-pr-hours-range", "value"),
+        Input("roc-pr-threshold-points", "value"),
     )
     def update_roc_pr_curves(
         dataset_config: Optional[Mapping[str, object]],
         carrier: Optional[str],
         hours_range: Optional[Iterable[float]],
+        threshold_points: Optional[float],
     ) -> Tuple[go.Figure, go.Figure, go.Figure, go.Figure]:
         if not dataset_config:
             message = "Load a dataset in the acceptance explorer controls to view the curves."
@@ -731,7 +770,15 @@ def register_performance_callbacks(app: Dash) -> None:
         dataset = dataset.copy()
         dataset["accept_prob"] = prob_series
 
-        return _roc_pr_curves(dataset, carrier, hours_range)
+        try:
+            requested_points = int(threshold_points) if threshold_points is not None else DEFAULT_THRESHOLD_POINTS
+        except (TypeError, ValueError):
+            requested_points = DEFAULT_THRESHOLD_POINTS
+
+        if requested_points < 2:
+            requested_points = DEFAULT_THRESHOLD_POINTS
+
+        return _roc_pr_curves(dataset, carrier, hours_range, requested_points)
 
 
 __all__ = ["register_performance_callbacks"]
