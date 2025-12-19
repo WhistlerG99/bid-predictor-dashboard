@@ -102,10 +102,6 @@ def _normalize_acceptance_dataset(dataset: pd.DataFrame) -> pd.DataFrame:
     if "accept_prob_timestamp" in dataset.columns:
         timestamps = pd.to_datetime(dataset["accept_prob_timestamp"], errors="coerce")
         dataset["current_timestamp"] = timestamps
-        if "snapshot_num" not in dataset.columns:
-            ordered = sorted({ts for ts in timestamps.dropna().unique()})
-            mapping = {value: idx + 1 for idx, value in enumerate(ordered)}
-            dataset["snapshot_num"] = timestamps.map(mapping)
     if "travel_date" not in dataset.columns and "departure_timestamp" in dataset.columns:
         dataset["travel_date"] = pd.to_datetime(
             dataset["departure_timestamp"], errors="coerce"
@@ -113,17 +109,31 @@ def _normalize_acceptance_dataset(dataset: pd.DataFrame) -> pd.DataFrame:
     if "hours_before_departure" not in dataset.columns and "days_before_departure" in dataset.columns:
         days = pd.to_numeric(dataset["days_before_departure"], errors="coerce")
         dataset["hours_before_departure"] = days * 24
-    if "Bid #" not in dataset.columns and "offer_id" in dataset.columns:
-        group_keys = [
-            key
-            for key in [
-                "carrier_code",
-                "flight_number",
-                "travel_date",
-                "upgrade_type",
-            ]
-            if key in dataset.columns
+
+    group_keys = [
+        key
+        for key in [
+            "carrier_code",
+            "flight_number",
+            "travel_date",
+            "upgrade_type",
         ]
+        if key in dataset.columns
+    ]
+    if "snapshot_num" not in dataset.columns and "current_timestamp" in dataset.columns:
+        if group_keys:
+            dataset["snapshot_num"] = (
+                dataset.groupby(group_keys)["current_timestamp"]
+                .rank(method='dense', ascending=True)
+                .astype(int)
+            )
+        else:
+            dataset["snapshot_num"] = (
+                dataset["current_timestamp"]
+                .rank(method='dense', ascending=True)
+                .astype(int)
+            )
+    if "Bid #" not in dataset.columns and "offer_id" in dataset.columns:
         if group_keys:
             dataset["Bid #"] = pd.NA
             for _, group in dataset.groupby(group_keys, sort=False):
