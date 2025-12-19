@@ -15,4 +15,4 @@ COPY . .
 EXPOSE 8000
 
 # No gunicorn – just run the script directly
-CMD ["python", "dash_app.py"]
+CMD redis-server --daemonize yes && python dash_app.py
