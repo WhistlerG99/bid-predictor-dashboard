@@ -4,15 +4,15 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    redis-server \
+    redis-tools \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=100 --disable-pip-version-check -r requirements.txt
 
 COPY . .
 
-# App Runner will connect to this port
 EXPOSE 8000
 
-# No gunicorn – just run the script directly
 CMD redis-server --daemonize yes && python dash_app.py
