@@ -1,13 +1,13 @@
 """Dropdown population callbacks for the snapshot explorer."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 import pandas as pd
 from dash import Dash, Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from ..data import load_dataset_cached
+from ..data import load_dashboard_dataset
 from ..dropdowns import choose_dropdown_value, options_from_series
 from ..selection_controls import register_selection_history_callbacks
 from ..snapshots import build_snapshot_options
@@ -24,7 +24,7 @@ def register_filter_callbacks(app: Dash) -> None:
         State("carrier-dropdown", "value"),
     )
     def populate_carriers(
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         selection_request: Optional[Dict[str, str]],
         current_value: Optional[str],
     ):
@@ -33,7 +33,7 @@ def register_filter_callbacks(app: Dash) -> None:
         if not dataset_path:
             return [], None
 
-        dataset = load_dataset_cached(dataset_path)
+        dataset = load_dashboard_dataset(dataset_path)
         if "carrier_code" not in dataset.columns:
             return [], None
 
@@ -57,7 +57,7 @@ def register_filter_callbacks(app: Dash) -> None:
     def populate_flight_numbers(
         carrier: Optional[str],
         selection_request: Optional[Dict[str, str]],
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         current_value: Optional[str],
     ):
         """Filter flight numbers based on the selected carrier."""
@@ -65,7 +65,7 @@ def register_filter_callbacks(app: Dash) -> None:
         if not dataset_path or not carrier:
             return [], None
 
-        dataset = load_dataset_cached(dataset_path)
+        dataset = load_dashboard_dataset(dataset_path)
         if not {"carrier_code", "flight_number"}.issubset(dataset.columns):
             return [], None
 
@@ -97,7 +97,7 @@ def register_filter_callbacks(app: Dash) -> None:
         flight_number: Optional[str],
         selection_request: Optional[Dict[str, str]],
         carrier: Optional[str],
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         current_value: Optional[str],
     ):
         """Filter travel dates once the flight number has been chosen."""
@@ -105,7 +105,7 @@ def register_filter_callbacks(app: Dash) -> None:
         if not dataset_path or not carrier or not flight_number:
             return [], None
 
-        dataset = load_dataset_cached(dataset_path)
+        dataset = load_dashboard_dataset(dataset_path)
         required = {"carrier_code", "flight_number", "travel_date"}
         if not required.issubset(dataset.columns):
             return [], None
@@ -145,7 +145,7 @@ def register_filter_callbacks(app: Dash) -> None:
         selection_request: Optional[Dict[str, str]],
         carrier: Optional[str],
         flight_number: Optional[str],
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         current_value: Optional[str],
     ):
         """List upgrade types for the fully specified flight selection."""
@@ -153,7 +153,7 @@ def register_filter_callbacks(app: Dash) -> None:
         if not dataset_path or not carrier or not flight_number or not travel_date:
             return [], None
 
-        dataset = load_dataset_cached(dataset_path)
+        dataset = load_dashboard_dataset(dataset_path)
         if "upgrade_type" not in dataset.columns:
             return [], None
 
@@ -188,7 +188,7 @@ def register_filter_callbacks(app: Dash) -> None:
         carrier: Optional[str],
         flight_number: Optional[str],
         travel_date: Optional[str],
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
     ):
         """List available snapshots after the user selects an upgrade type."""
 
@@ -201,7 +201,7 @@ def register_filter_callbacks(app: Dash) -> None:
         ):
             return [], None
 
-        dataset = load_dataset_cached(dataset_path)
+        dataset = load_dashboard_dataset(dataset_path)
         if "snapshot_num" not in dataset.columns:
             return [], None
 
@@ -228,7 +228,7 @@ def register_filter_callbacks(app: Dash) -> None:
         flight_dropdown_id="flight-number-dropdown",
         travel_date_dropdown_id="travel-date-dropdown",
         upgrade_dropdown_id="upgrade-dropdown",
-        loader=load_dataset_cached,
+        loader=load_dashboard_dataset,
     )
 
 

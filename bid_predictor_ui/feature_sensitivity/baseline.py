@@ -1,12 +1,12 @@
 """Baseline snapshot loading for feature sensitivity."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
 import pandas as pd
 from dash import Dash, Input, Output, State
 
-from ..data import load_dataset_cached
+from ..data import load_dashboard_dataset
 from ..formatting import clear_derived_features, prepare_bid_record, sort_records_by_bid
 from ..scenario import (
     TIME_TO_DEPARTURE_SCENARIO_KEY,
@@ -126,7 +126,7 @@ def register_baseline_callback(app: Dash) -> None:
         flight_number: Optional[str],
         travel_date: Optional[str],
         upgrade_type: Optional[str],
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         feature_config: Optional[Dict[str, object]],
     ) -> ReturnType:
         """Load the selected flight snapshot and populate the scenario stores.
@@ -145,7 +145,7 @@ def register_baseline_callback(app: Dash) -> None:
             return None, None, [], "", "Select a flight and upgrade type."
 
         try:
-            dataset = load_dataset_cached(dataset_path)
+            dataset = load_dashboard_dataset(dataset_path)
         except Exception as exc:
             return None, None, [], "", f"Failed to read dataset: {exc}"
 

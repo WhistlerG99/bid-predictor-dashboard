@@ -1,13 +1,13 @@
 """Dropdown population callbacks for the feature sensitivity tab."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 import pandas as pd
 from dash import Dash, Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from ..data import load_dataset_cached
+from ..data import load_dashboard_dataset
 from ..dropdowns import choose_dropdown_value
 from ..scenario import (
     build_carrier_options,
@@ -29,7 +29,7 @@ def register_filter_callbacks(app: Dash) -> None:
         State("scenario-carrier-dropdown", "value"),
     )
     def populate_scenario_carriers(
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         selection_request: Optional[Dict[str, str]],
         current_value: Optional[str],
     ):
@@ -43,7 +43,7 @@ def register_filter_callbacks(app: Dash) -> None:
             return [], None
 
         try:
-            dataset = load_dataset_cached(dataset_path)
+            dataset = load_dashboard_dataset(dataset_path)
         except Exception:
             return [], None
 
@@ -65,7 +65,7 @@ def register_filter_callbacks(app: Dash) -> None:
     def populate_scenario_flight_numbers(
         carrier: Optional[str],
         selection_request: Optional[Dict[str, str]],
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         current_value: Optional[str],
     ):
         """Populate flight numbers for the chosen carrier.
@@ -78,7 +78,7 @@ def register_filter_callbacks(app: Dash) -> None:
             return [], None
 
         try:
-            dataset = load_dataset_cached(dataset_path)
+            dataset = load_dashboard_dataset(dataset_path)
         except Exception:
             return [], None
 
@@ -105,7 +105,7 @@ def register_filter_callbacks(app: Dash) -> None:
         flight_number: Optional[str],
         selection_request: Optional[Dict[str, str]],
         carrier: Optional[str],
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         current_value: Optional[str],
     ):
         """Populate travel dates for the chosen carrier and flight.
@@ -118,7 +118,7 @@ def register_filter_callbacks(app: Dash) -> None:
             return [], None
 
         try:
-            dataset = load_dataset_cached(dataset_path)
+            dataset = load_dashboard_dataset(dataset_path)
         except Exception:
             return [], None
 
@@ -144,7 +144,7 @@ def register_filter_callbacks(app: Dash) -> None:
         selection_request: Optional[Dict[str, str]],
         carrier: Optional[str],
         flight_number: Optional[str],
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         current_value: Optional[str],
     ):
         """Populate upgrade types for the selected flight and travel date.
@@ -158,7 +158,7 @@ def register_filter_callbacks(app: Dash) -> None:
             return [], None
 
         try:
-            dataset = load_dataset_cached(dataset_path)
+            dataset = load_dashboard_dataset(dataset_path)
         except Exception:
             return [], None
 
@@ -180,7 +180,7 @@ def register_filter_callbacks(app: Dash) -> None:
         flight_dropdown_id="scenario-flight-number-dropdown",
         travel_date_dropdown_id="scenario-travel-date-dropdown",
         upgrade_dropdown_id="scenario-upgrade-dropdown",
-        loader=load_dataset_cached,
+        loader=load_dashboard_dataset,
     )
 
 

@@ -588,6 +588,7 @@ def create_app() -> Dash:
                 },
             ),
             dcc.Store(id="acceptance-dataset-path-store"),
+            dcc.Store(id="dataset-path-store"),
             dcc.Store(id="model-uri-store"),
             dcc.Store(id="bid-records-store"),
             dcc.Store(id="snapshot-meta-store"),
@@ -634,6 +635,9 @@ def create_app() -> Dash:
     )
 
     register_acceptance_callbacks(app)
+    register_snapshot_callbacks(app)
+    register_feature_sensitivity_callbacks(app)
+    register_performance_callbacks(app)
     
     # Start background hourly refresh thread
     if REDIS_URL and S3_DATASET_LISTING_URI:
@@ -653,6 +657,7 @@ def create_app() -> Dash:
     @app.callback(
         Output("acceptance-dataset-status", "children"),
         Output("acceptance-dataset-path-store", "data"),
+        Output("dataset-path-store", "data"),
         Output("acceptance-loader-status", "children"),
         Input("acceptance-loader-interval", "n_intervals"),
         Input("acceptance-lookback-apply", "n_clicks"),
@@ -666,7 +671,7 @@ def create_app() -> Dash:
     ):
         if not S3_DATASET_LISTING_URI:
             message = "S3_DATASET_LISTING_URI is not configured."
-            return message, None, message
+            return message, None, None, message
 
         # Resolve lookback window in hours from user input
         try:
@@ -705,7 +710,7 @@ def create_app() -> Dash:
                     "hours": hours,
                 }
                 _populate_acceptance_cache(bucket_data, dataset_config)
-                return status, dataset_config, loader_status
+                return status, dataset_config, dataset_config, loader_status
         
         # Fall back to legacy full-window cache or S3
         cache_key = _acceptance_cache_key(hours)
@@ -737,7 +742,7 @@ def create_app() -> Dash:
                     }
                     # Populate internal cache so dropdowns work
                     _populate_acceptance_cache(dataset, dataset_config)
-                    return status, dataset_config, loader_status
+                    return status, dataset_config, dataset_config, loader_status
                 except Exception as exc:  # pragma: no cover - cache decode issues
                     print(f"[Acceptance loader] Failed to read cached dataset: {exc}")
             
@@ -802,7 +807,7 @@ def create_app() -> Dash:
                                         }
                                         # Populate internal cache so dropdowns work
                                         _populate_acceptance_cache(filtered_dataset, dataset_config)
-                                        return status, dataset_config, loader_status
+                                        return status, dataset_config, dataset_config, loader_status
                                     else:
                                         print(
                                             f"[Acceptance loader] Cached {larger_hours}h dataset filtered to empty "
@@ -840,7 +845,7 @@ def create_app() -> Dash:
                 print(f"[Acceptance loader] Using file: s3://{path}")
         except Exception as exc:
             error_msg = f"Failed to list S3 files: {exc}"
-            return error_msg, None, error_msg
+            return error_msg, None, None, error_msg
 
         dataset_config = {
             "source": "path",
@@ -855,7 +860,7 @@ def create_app() -> Dash:
             dataset = _enrich_with_offer_status(dataset, hour_buckets if hour_buckets else None)
         except Exception as exc:  # pragma: no cover - user feedback
             error_msg = f"Failed to load acceptance dataset: {exc}"
-            return error_msg, None, error_msg
+            return error_msg, None, None, error_msg
 
         # Write to Redis cache with TTL equal to hours window (in seconds)
         if cache_client is not None:
@@ -915,7 +920,7 @@ def create_app() -> Dash:
         )
         # Populate internal cache so dropdowns work
         _populate_acceptance_cache(dataset, dataset_config)
-        return status, dataset_config, loader_status
+        return status, dataset_config, dataset_config, loader_status
 
     return app
 

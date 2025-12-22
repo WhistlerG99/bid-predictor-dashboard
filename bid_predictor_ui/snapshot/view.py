@@ -1,7 +1,7 @@
 """Snapshot loading and bid management callbacks."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 from uuid import uuid4
 
 import pandas as pd
@@ -15,7 +15,7 @@ from dash import (
     no_update,
 )
 
-from ..data import load_dataset_cached
+from ..data import load_dashboard_dataset
 from ..formatting import (
     apply_bid_labels,
     compute_bid_label_map,
@@ -408,7 +408,7 @@ def register_snapshot_view_callbacks(app: Dash) -> None:
         flight_number: Optional[str],
         travel_date: Optional[str],
         upgrade_type: Optional[str],
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         snapshot_meta: Optional[Dict[str, object]],
         removed_store: Optional[List[Dict[str, object]]],
         baseline_records_store: Optional[List[Dict[str, object]]],
@@ -442,7 +442,7 @@ def register_snapshot_view_callbacks(app: Dash) -> None:
                 no_update,
             )
 
-        dataset = load_dataset_cached(dataset_path)
+        dataset = load_dashboard_dataset(dataset_path)
 
         if not carrier or not flight_number or not travel_date or not upgrade_type:
             return (

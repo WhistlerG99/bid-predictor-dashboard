@@ -19,6 +19,7 @@ from .tables import apply_table_edits, build_bid_table
 from .predictions import predict
 from .data import (
     load_dataset_cached,
+    load_dashboard_dataset,
     load_model_cached,
     prepare_prediction_dataframe,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "filter_snapshots_by_frequency",
     "normalize_offer_time",
     "load_dataset_cached",
+    "load_dashboard_dataset",
     "load_model_cached",
     "prepare_bid_record",
     "prepare_prediction_dataframe",

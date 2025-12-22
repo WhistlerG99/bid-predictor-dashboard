@@ -1,13 +1,13 @@
 """Prediction graph callbacks for the snapshot explorer."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 import pandas as pd
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, State
 
-from ..data import load_dataset_cached, prepare_prediction_dataframe
+from ..data import load_dashboard_dataset, prepare_prediction_dataframe
 from ..feature_config import DEFAULT_UI_FEATURE_CONFIG
 from ..formatting import apply_bid_labels, compute_bid_label_map
 from ..plotting import build_prediction_plot, filter_snapshots_by_frequency
@@ -38,7 +38,7 @@ def register_prediction_callbacks(app: Dash) -> None:
         model_uri: Optional[str],
         snapshot_frequency: Optional[int],
         chart_style: Optional[str],
-        dataset_path: Optional[str],
+        dataset_path: Optional[Mapping[str, object] | str],
         carrier: Optional[str],
         flight_number: Optional[str],
         travel_date: Optional[str],
@@ -73,7 +73,7 @@ def register_prediction_callbacks(app: Dash) -> None:
         label_column: Optional[str] = None
         if dataset_path and carrier and flight_number and travel_date and upgrade_type:
             try:
-                dataset = load_dataset_cached(dataset_path)
+                dataset = load_dashboard_dataset(dataset_path)
                 required = {"carrier_code", "flight_number", "travel_date", "upgrade_type"}
                 if required.issubset(dataset.columns):
                     travel_date_dt = pd.to_datetime(travel_date).date()

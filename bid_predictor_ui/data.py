@@ -14,6 +14,8 @@ import pandas as pd
 import pyarrow.dataset as ds
 from pyarrow import fs as pyfs
 
+from .data_sources import load_dataset_from_source
+
 EnvKind = "EnvKind"
 
 
@@ -267,6 +269,75 @@ def load_dataset_cached(dataset_path: str, reload: bool = False) -> pd.DataFrame
 load_dataset_cached.cache_clear = _clear_dataset_cache  # type: ignore[attr-defined]
 
 
+def _normalize_dashboard_dataset(data: pd.DataFrame) -> pd.DataFrame:
+    data = data.rename(columns=DEFAULT_RENAME_COLUMNS, errors="ignore")
+
+    for column in DEFAULT_CATEGORY_COLUMNS:
+        if column in data.columns:
+            data[column] = data[column].astype("category")
+
+    _coerce_datetime_columns(
+        data,
+        ["current_timestamp", "departure_timestamp", "travel_date"],
+    )
+
+    if {"departure_timestamp", "current_timestamp"}.issubset(data.columns):
+        cutoff = pd.to_timedelta(5, unit="D")
+        delta = data["departure_timestamp"] - data["current_timestamp"]
+        data = data.loc[delta < cutoff].copy()
+
+    if "snapshot_num" not in data.columns and "current_timestamp" in data.columns:
+        group_keys = [
+            key
+            for key in [
+                "carrier_code",
+                "flight_number",
+                "travel_date",
+                "upgrade_type",
+            ]
+            if key in data.columns
+        ]
+
+        if group_keys:
+            data["snapshot_num"] = (
+                data.groupby(group_keys)["current_timestamp"]
+                .rank(method="dense", ascending=True)
+                .astype(int)
+            )
+        else:
+            data["snapshot_num"] = (
+                data["current_timestamp"]
+                .rank(method="dense", ascending=True)
+                .astype(int)
+            )
+
+    return data
+
+
+def load_dashboard_dataset(
+    config: str | Mapping[str, object],
+    *,
+    reload: bool = False,
+) -> pd.DataFrame:
+    data = load_dataset_from_source(
+        config,
+        normalizer=_normalize_dashboard_dataset,
+        reload=reload,
+    )
+
+    missing = [col for col in REQUIRED_DATA_COLUMNS if col not in data.columns]
+    if missing:
+        raise ValueError(
+            "Dataset is missing required columns: {}".format(", ".join(sorted(missing)))
+        )
+
+    _coerce_datetime_columns(
+        data,
+        ["current_timestamp", "departure_timestamp", "travel_date"],
+    )
+    return data
+
+
 @lru_cache(maxsize=4)
 def load_model_cached(model_uri: str):
     return mlflow.sklearn.load_model(model_uri)
@@ -345,6 +416,7 @@ __all__ = [
     "load_training_data",
     "load_dataset",
     "load_dataset_cached",
+    "load_dashboard_dataset",
     "load_model_cached",
     "get_model_feature_config",
     "prepare_prediction_dataframe",

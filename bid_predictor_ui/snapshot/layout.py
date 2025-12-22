@@ -22,6 +22,47 @@ def _build_snapshot_filter_card() -> html.Div:
             build_selection_history_dropdown("selection-history-dropdown"),
             html.Div(
                 [
+                    html.Label("MLflow model URI", style={"fontWeight": "600"}),
+                    dcc.Input(
+                        id="mlflow-model-uri-input",
+                        type="text",
+                        placeholder="models:/bid_predictor/Production",
+                        style={
+                            "width": "100%",
+                            "marginTop": "0.35rem",
+                            "borderRadius": "6px",
+                            "border": "1px solid #cbd5e1",
+                            "padding": "0.4rem",
+                        },
+                    ),
+                    html.Button(
+                        "Load model",
+                        id="mlflow-model-load",
+                        n_clicks=0,
+                        style={
+                            "marginTop": "0.5rem",
+                            "padding": "0.35rem 0.75rem",
+                            "fontSize": "0.8rem",
+                            "borderRadius": "6px",
+                            "border": "none",
+                            "backgroundColor": "#1b4965",
+                            "color": "white",
+                            "cursor": "pointer",
+                        },
+                    ),
+                    html.Div(
+                        id="mlflow-model-status",
+                        style={
+                            "marginTop": "0.35rem",
+                            "fontSize": "0.85rem",
+                            "color": "#16324f",
+                        },
+                    ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
                     html.Label("Carrier", style={"fontWeight": "600"}),
                     dcc.Dropdown(
                         id="carrier-dropdown",
