@@ -455,10 +455,6 @@ def _enrich_with_offer_status(dataset: pd.DataFrame, hour_timestamps: Optional[l
     
     # Show "pending" for offers without status (not TICKETED or EXPIRED)
     dataset["offer_status"] = dataset["offer_status"].fillna("pending")
-    dataset.loc[
-        ~dataset["offer_status"].isin(["TICKETED", "EXPIRED"]),
-        "offer_status"
-    ] = "pending"
     
     # Drop temporary column
     dataset = dataset.drop(columns=["offer_id_str"], errors="ignore")
