@@ -33,6 +33,7 @@ from bid_predictor_ui import (
     load_dataset_cached,
     load_model_cached,
 )
+from bid_predictor_ui import data_sources as data_sources_module
 from bid_predictor_ui.data_sources import (
     DEFAULT_ACCEPTANCE_TABLE,
     _cache_key,
@@ -440,26 +441,6 @@ def _enrich_with_offer_status(dataset: pd.DataFrame, hour_timestamps: Optional[l
     """Enrich dataset with offer_status from cache or Redshift."""
     if dataset.empty or "offer_id" not in dataset.columns:
         return dataset
-
-    def _normalize_offer_id(value: object) -> Optional[str]:
-        if value is None or pd.isna(value):
-            return None
-        if isinstance(value, int):
-            return str(value)
-        if isinstance(value, float):
-            if value.is_integer():
-                return str(int(value))
-            return str(value)
-        text = str(value).strip()
-        if not text:
-            return None
-        try:
-            numeric = float(text)
-        except ValueError:
-            return text
-        if numeric.is_integer() and text.replace(".", "", 1).isdigit():
-            return str(int(numeric))
-        return text
     
     # Get hour timestamps if not provided
     if hour_timestamps is None:
@@ -476,8 +457,7 @@ def _enrich_with_offer_status(dataset: pd.DataFrame, hour_timestamps: Optional[l
     offer_statuses = _get_offer_statuses_from_cache(hour_timestamps)
     
     # Get unique offer_ids that we don't have status for
-    normalized_offer_ids = dataset["offer_id"].map(_normalize_offer_id)
-    dataset_offer_ids = normalized_offer_ids.dropna().unique().tolist()
+    dataset_offer_ids = dataset["offer_id"].dropna().astype(str).unique().tolist()
     missing_offer_ids = [oid for oid in dataset_offer_ids if oid not in offer_statuses]
     
     # Fetch missing offer_statuses from Redshift
@@ -502,7 +482,7 @@ def _enrich_with_offer_status(dataset: pd.DataFrame, hour_timestamps: Optional[l
     
     # Map offer_status to dataset
     dataset = dataset.copy()
-    dataset["offer_id_str"] = normalized_offer_ids
+    dataset["offer_id_str"] = dataset["offer_id"].astype(str)
     dataset["offer_status"] = dataset["offer_id_str"].map(offer_statuses)
     
     # for k,v in fetched_statuses.items():
