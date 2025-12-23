@@ -29,6 +29,8 @@ except ImportError:  # pragma: no cover
 
 from bid_predictor_ui import (
     DEFAULT_UI_FEATURE_CONFIG,
+    build_model_name_options,
+    build_model_stage_or_version_options,
     build_ui_feature_config,
     load_dataset_cached,
     load_model_cached,
@@ -503,6 +505,7 @@ def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> N
 
 def create_app() -> Dash:
     app = Dash(__name__)
+    model_name_options = build_model_name_options()
     app.layout = html.Div(
         [
             html.Div(
@@ -590,25 +593,13 @@ def create_app() -> Dash:
                             ),
                             html.Div(
                                 [
-                                    html.Label(
-                                        "MLflow tracking URI",
-                                        style={"fontWeight": "600"},
-                                    ),
-                                    dcc.Input(
-                                        id="mlflow-tracking-uri",
-                                        type="text",
-                                        value=mlflow.get_tracking_uri(),
-                                        placeholder="http://localhost:5000",
-                                        style={
-                                            "width": "100%",
-                                            "marginBottom": "0.5rem",
-                                        },
-                                    ),
                                     html.Label("Model name", style={"fontWeight": "600"}),
-                                    dcc.Input(
+                                    dcc.Dropdown(
                                         id="model-name",
-                                        type="text",
-                                        placeholder="Registered model name",
+                                        options=model_name_options,
+                                        placeholder="Select a registered model",
+                                        value=None,
+                                        clearable=True,
                                         style={
                                             "width": "100%",
                                             "marginBottom": "0.5rem",
@@ -618,10 +609,13 @@ def create_app() -> Dash:
                                         "Model stage or version",
                                         style={"fontWeight": "600"},
                                     ),
-                                    dcc.Input(
+                                    dcc.Dropdown(
                                         id="model-stage",
-                                        type="text",
-                                        placeholder="e.g. Production or 5",
+                                        options=[],
+                                        placeholder="Select a stage or version",
+                                        value=None,
+                                        clearable=True,
+                                        disabled=True,
                                         style={
                                             "width": "100%",
                                             "marginBottom": "0.5rem",
@@ -1139,30 +1133,47 @@ def create_app() -> Dash:
 
 
     @app.callback(
+        Output("model-stage", "options"),
+        Output("model-stage", "value"),
+        Output("model-stage", "disabled"),
+        Input("model-name", "value"),
+    )
+    def update_model_stage_options(model_name: Optional[str]):
+        if not model_name:
+            return [], None, True
+
+        options = build_model_stage_or_version_options(model_name)
+        return options, None, False
+
+
+    @app.callback(
         Output("model-status", "children"),
         Output("model-uri-store", "data"),
         Output("feature-config-store", "data"),
         Input("load-model", "n_clicks"),
-        State("mlflow-tracking-uri", "value"),
         State("model-name", "value"),
         State("model-stage", "value"),
         prevent_initial_call=True,
     )
-    def load_model(n_clicks: int, tracking_uri: str, model_name: str, stage_or_version: str):
+    def load_model(n_clicks: int, model_name: str, stage_or_version: str):
         if not model_name:
-            return "Please enter a registered model name.", None
+            return (
+                "Select a registered model name.",
+                None,
+                deepcopy(DEFAULT_UI_FEATURE_CONFIG),
+            )
 
-        mlflow.set_tracking_uri(tracking_uri or mlflow.get_tracking_uri())
+        if not stage_or_version:
+            return (
+                "Select a model stage or version.",
+                None,
+                deepcopy(DEFAULT_UI_FEATURE_CONFIG),
+            )
+
         model_uri: Optional[str] = None
         try:
-            if stage_or_version:
-                stage_or_version = stage_or_version.strip()
-                if stage_or_version.isdigit():
-                    model_uri = f"models:/{model_name}/{stage_or_version}"
-                else:
-                    model_uri = f"models:/{model_name}/{stage_or_version}"
-            else:
-                model_uri = f"models:/{model_name}/Production"
+            stage_or_version = stage_or_version.strip()
+            model_uri = f"models:/{model_name}/{stage_or_version}"
             model = load_model_cached(model_uri)
             raw_config = getattr(model, "feature_config_", None) or getattr(
                 model, "feature_config", None

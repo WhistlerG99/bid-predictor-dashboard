@@ -22,6 +22,10 @@ from .data import (
     load_model_cached,
     prepare_prediction_dataframe,
 )
+from .model_registry import (
+    build_model_name_options,
+    build_model_stage_or_version_options,
+)
 from .scenario import (
     ScenarioFeature,
     ScenarioRange,
@@ -59,6 +63,8 @@ __all__ = [
     "load_model_cached",
     "prepare_bid_record",
     "prepare_prediction_dataframe",
+    "build_model_name_options",
+    "build_model_stage_or_version_options",
     "predict",
     "ScenarioFeature",
     "ScenarioRange",
