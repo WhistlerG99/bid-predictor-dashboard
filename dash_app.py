@@ -536,7 +536,7 @@ def create_app() -> Dash:
                     dcc.Tab(label="Acceptance explorer", value="acceptance"),
                     dcc.Tab(label="Performance tracker", value="performance"),
                 ],
-                style={"marginTop": "1rem"},
+                style={"marginTop": "1rem", "marginBottom": "1rem"},
             ),
             html.Div(
                 [
