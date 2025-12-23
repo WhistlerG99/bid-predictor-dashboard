@@ -840,6 +840,7 @@ def create_app() -> Dash:
             acceptance_style["display"] = "flex"
         return standard_style, acceptance_style
 
+
     @app.callback(
         Output("dataset-status", "children"),
         Output("dataset-path-store", "data"),
@@ -867,6 +868,7 @@ def create_app() -> Dash:
         status_prefix = "Reloaded" if reload_flag else "Loaded"
         status = f"{status_prefix} dataset with {len(dataset):,} rows."
         return status, path
+
 
     @app.callback(
         Output("acceptance-dataset-status", "children"),
@@ -1135,7 +1137,6 @@ def create_app() -> Dash:
         _populate_acceptance_cache(dataset, dataset_config)
         return status, dataset_config, loader_status
 
-    return app
 
     @app.callback(
         Output("model-status", "children"),
