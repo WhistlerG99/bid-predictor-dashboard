@@ -57,24 +57,15 @@ from bid_predictor_ui.performance_tracker import (
     build_performance_tab,
     register_performance_callbacks,
 )
+from bid_predictor_ui import data_sources as data_sources_module
+from bid_predictor_ui.acceptance_explorer.view import _normalize_acceptance_dataset
 
-import logging
-
-logger = logging.getLogger(__name__)
 load_dotenv()
 
-
-# if detect_execution_environment()[0] in (
-#         "sagemaker_notebook",
-#         "sagemaker_terminal",
-#     ):
 arn = os.environ["MLFLOW_AWS_ARN"]
 mlflow.set_tracking_uri(arn)
 default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
-# else:
-#     default_dataset_path = (
-#         "./data/air_canada_and_lot/evaluation_sets/eval_bid_data_snapshots_v2_3_or_mode_bids.parquet"
-#     )
+
 
 # Acceptance dataset configuration via S3 listing and Redis cache
 S3_DATASET_LISTING_URI = os.environ.get("S3_DATASET_LISTING_URI")
@@ -463,12 +454,6 @@ def _enrich_with_offer_status(dataset: pd.DataFrame, hour_timestamps: Optional[l
     if missing_offer_ids:
         print(f"[Offer status] Fetching {len(missing_offer_ids)} offer_statuses from Redshift...")
         fetched_statuses = _fetch_offer_statuses(missing_offer_ids)
-        n = 0
-        for k,v in fetched_statuses.items():
-            logger.warning(f"[Offer status] {k} ({type(k)}): {v}")
-            n += 1
-            if n == 100:
-                break
 
         offer_statuses.update(fetched_statuses)
         
@@ -484,19 +469,9 @@ def _enrich_with_offer_status(dataset: pd.DataFrame, hour_timestamps: Optional[l
     dataset["offer_id_str"] = dataset["offer_id"].astype(str)
     dataset["offer_status"] = dataset["offer_id_str"].map(offer_statuses)
     
-    # for k,v in fetched_statuses.items():
-    #     offstts = dataset[dataset["offer_id_str"] == k]["offer_status"]
-    #     if offstts.empty:
-    #         logger.warning(f"[Offer status] No offer_status for {k} ({type(k)})")
-    #     else:
-    #         logger.warning(f"[Offer status] {k} ({type(k)}) has offer_status {offstts.iloc[0]}, {v} ({type(v)})")
     # Show "pending" for offers without status (not TICKETED or EXPIRED)
     dataset["offer_status"] = dataset["offer_status"].fillna("pending")
     
-
-    logger.warning(f"[Offer status] {dataset.head(5)}")
-
-    logger.warning(f"[Offer status] {dataset[['offer_status', 'offer_status']].head(10)}")
     # Drop temporary column
     dataset = dataset.drop(columns=["offer_id_str"], errors="ignore")
     
