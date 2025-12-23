@@ -1,7 +1,7 @@
 """Layout for the performance tracker tab."""
 from __future__ import annotations
 
-from dash import dcc, html
+from dash import dash_table, dcc, html
 
 
 CONTROL_CARD_STYLE = {
@@ -229,6 +229,118 @@ def _build_distribution_section() -> html.Div:
     )
 
 
+def _build_performance_overview_section() -> html.Div:
+    """Create the performance overview controls and summary table."""
+
+    control_panel = html.Div(
+        [
+            html.H4(
+                "Filter settings", style={"margin": "0 0 0.75rem 0", "color": "#1b4965"}
+            ),
+            html.Div(
+                [
+                    html.Label("Threshold", style={"fontWeight": "600"}),
+                    dcc.Slider(
+                        id="performance-overview-threshold",
+                        min=0.0,
+                        max=1.0,
+                        step=0.01,
+                        value=0.5,
+                        marks={0: "0", 0.5: "0.5", 1: "1"},
+                        tooltip={"placement": "bottom", "always_visible": False},
+                    ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
+                    html.Label("Carrier", style={"fontWeight": "600"}),
+                    dcc.Dropdown(
+                        id="performance-overview-carrier",
+                        placeholder="All carriers",
+                        options=[],
+                        value="ALL",
+                        clearable=False,
+                    ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
+                    html.Label("Hours before departure", style={"fontWeight": "600"}),
+                    dcc.RangeSlider(
+                        id="performance-overview-hours-range",
+                        min=0,
+                        max=100,
+                        step=1,
+                        value=[0, 100],
+                        allowCross=False,
+                        tooltip={"placement": "bottom", "always_visible": False},
+                    ),
+                ]
+            ),
+        ],
+        style=CONTROL_CARD_STYLE,
+    )
+
+    table_card = html.Div(
+        [
+            html.H4(
+                "Classification summary",
+                style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
+            ),
+            html.Div(
+                id="performance-overview-status",
+                className="status-message",
+                style={"marginBottom": "0.5rem", "color": "#c1121f", "fontWeight": 600},
+            ),
+            dash_table.DataTable(
+                id="performance-overview-table",
+                columns=[
+                    {"name": "Metric", "id": "Metric", "editable": False},
+                    {"name": "Value", "id": "Value", "editable": False},
+                ],
+                data=[],
+                style_cell={
+                    "textAlign": "left",
+                    "padding": "0.6rem",
+                    "backgroundColor": "#ffffff",
+                    "border": "1px solid #f1f5f9",
+                },
+                style_header={
+                    "backgroundColor": "#1b4965",
+                    "color": "white",
+                    "fontWeight": "700",
+                    "textAlign": "left",
+                },
+                style_data={"whiteSpace": "normal", "height": "auto", "lineHeight": "1.3em"},
+                cell_selectable=False,
+            ),
+        ],
+        style={
+            "backgroundColor": "#ffffff",
+            "borderRadius": "12px",
+            "boxShadow": "0 2px 10px rgba(0, 0, 0, 0.08)",
+            "padding": "1rem",
+            "flex": "1",
+        },
+    )
+
+    return html.Div(
+        [
+            html.H3("Performance Overview", style={"margin": "0 0 0.75rem 0", "color": "#1b4965"}),
+            html.Div(
+                [
+                    html.Div(control_panel, style={"flex": "0 0 320px"}),
+                    table_card,
+                ],
+                style={"display": "flex", "gap": "1rem", "alignItems": "stretch"},
+            ),
+        ],
+        style={"marginBottom": "1.5rem"},
+    )
+
+
 def _build_roc_pr_section() -> html.Div:
     """Create the ROC and precision-recall controls and charts."""
 
@@ -387,6 +499,7 @@ def build_performance_tab() -> dcc.Tab:
         children=[
             html.Div(
                 [
+                    _build_performance_overview_section(),
                     html.Div(
                         [
                             html.H2(

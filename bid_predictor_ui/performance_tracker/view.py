@@ -156,6 +156,69 @@ def _actuals_chart(x: List[str], positives: List[int], negatives: List[int]) -> 
     return fig
 
 
+def _format_metric_value(value: Optional[float], precision: int = 3) -> str:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "N/A"
+    return f"{value:.{precision}f}"
+
+
+def _format_count_value(value: Optional[float]) -> str:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "N/A"
+    return f"{int(value)}"
+
+
+def _performance_overview_rows(
+    df: pd.DataFrame,
+    threshold: float,
+    carrier: Optional[str],
+    hours_range: Optional[Iterable[float]],
+) -> Tuple[List[Dict[str, str]], Optional[str]]:
+    working = _filter_acceptance_rows(df, carrier, hours_range)
+    working["accept_prob"] = pd.to_numeric(working.get("accept_prob"), errors="coerce")
+    working = working.dropna(subset=["accept_prob", "offer_status"])
+    if working.empty:
+        return [], "No rows matched the selected filters."
+
+    actual_positive = working["offer_status"] == "TICKETED"
+    predicted_positive = working["accept_prob"] >= threshold * 100
+    tp = int((actual_positive & predicted_positive).sum())
+    tn = int((~actual_positive & ~predicted_positive).sum())
+    fp = int((~actual_positive & predicted_positive).sum())
+    fn = int((actual_positive & ~predicted_positive).sum())
+    total = int(tp + tn + fp + fn)
+    pos = tp + fn
+    neg = tn + fp
+
+    accuracy = (tp + tn) / total if total else np.nan
+    precision = tp / (tp + fp) if (tp + fp) else np.nan
+    recall = tp / (tp + fn) if (tp + fn) else np.nan
+    negative_precision = tn / (tn + fn) if (tn + fn) else np.nan
+    negative_recall = tn / (tn + fp) if (tn + fp) else np.nan
+    tpr_val = recall
+    fpr_val = fp / neg if neg else np.nan
+    tnr_val = negative_recall
+    fnr_val = fn / pos if pos else np.nan
+
+    rows = [
+        {"Metric": "Total number of items", "Value": _format_count_value(total)},
+        {"Metric": "Number of true positives", "Value": _format_count_value(tp)},
+        {"Metric": "Number of false positives", "Value": _format_count_value(fp)},
+        {"Metric": "Number of true negatives", "Value": _format_count_value(tn)},
+        {"Metric": "Number of false negatives", "Value": _format_count_value(fn)},
+        {"Metric": "Accuracy", "Value": _format_metric_value(accuracy)},
+        {"Metric": "Precision", "Value": _format_metric_value(precision)},
+        {"Metric": "Recall", "Value": _format_metric_value(recall)},
+        {"Metric": "Negative Precision", "Value": _format_metric_value(negative_precision)},
+        {"Metric": "Negative Recall", "Value": _format_metric_value(negative_recall)},
+        {"Metric": "True positive Rate", "Value": _format_metric_value(tpr_val)},
+        {"Metric": "False Positive Rate", "Value": _format_metric_value(fpr_val)},
+        {"Metric": "True negative Rate", "Value": _format_metric_value(tnr_val)},
+        {"Metric": "False negative rate", "Value": _format_metric_value(fnr_val)},
+    ]
+    return rows, None
+
+
 def _accept_prob_distribution(
     df: pd.DataFrame,
     bin_count: int,
@@ -574,6 +637,83 @@ def register_performance_callbacks(app: Dash) -> None:
 
         options = _build_carrier_options(dataset)
         return (options, "ALL")
+
+    @callback(
+        Output("performance-overview-carrier", "options"),
+        Output("performance-overview-carrier", "value"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def populate_performance_overview_carriers(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[List[Dict[str, str]], str]:
+        if not dataset_config:
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        options = _build_carrier_options(dataset)
+        return (options, "ALL")
+
+    @callback(
+        Output("performance-overview-hours-range", "min"),
+        Output("performance-overview-hours-range", "max"),
+        Output("performance-overview-hours-range", "value"),
+        Output("performance-overview-hours-range", "marks"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def configure_performance_overview_hours_range(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[float, float, List[float], Dict[int, str]]:
+        if not dataset_config:
+            return _compute_hours_range(pd.DataFrame())
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return _compute_hours_range(pd.DataFrame())
+
+        return _compute_hours_range(dataset)
+
+    @callback(
+        Output("performance-overview-status", "children"),
+        Output("performance-overview-table", "data"),
+        Input("acceptance-dataset-path-store", "data"),
+        Input("performance-overview-threshold", "value"),
+        Input("performance-overview-carrier", "value"),
+        Input("performance-overview-hours-range", "value"),
+    )
+    def update_performance_overview_table(
+        dataset_config: Optional[Mapping[str, object]],
+        threshold: Optional[float],
+        carrier: Optional[str],
+        hours_range: Optional[Iterable[float]],
+    ) -> Tuple[str, List[Dict[str, str]]]:
+        if not dataset_config:
+            message = "Load a dataset in the acceptance explorer controls to view performance metrics."
+            return message, []
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception as exc:  # pragma: no cover - user feedback
+            message = f"Failed to load dataset: {exc}"
+            return message, []
+
+        prob_series = _select_first_series(
+            dataset, ["accept_prob", "acceptance_prob", "Acceptance Probability"]
+        )
+        if prob_series is None:
+            return "Dataset must include an 'accept_prob' column.", []
+
+        dataset = dataset.copy()
+        dataset["accept_prob"] = prob_series
+
+        rows, error = _performance_overview_rows(
+            dataset, float(threshold or 0.0), carrier, hours_range
+        )
+        return (error or ""), rows
 
     @callback(
         Output("performance-status", "children"),
