@@ -527,6 +527,17 @@ def create_app() -> Dash:
                     "marginBottom": "1.5rem",
                 },
             ),
+            dcc.Tabs(
+                id="main-tabs",
+                value="snapshot",
+                children=[
+                    build_snapshot_tab(),
+                    build_feature_sensitivity_tab(),
+                    build_acceptance_tab(),
+                    build_performance_tab(),
+                ],
+                style={"marginTop": "1rem"},
+            ),
             html.Div(
                 [
                     html.Div(
@@ -772,17 +783,6 @@ def create_app() -> Dash:
                 n_intervals=0,
                 max_intervals=1,
             ),            
-            dcc.Tabs(
-                id="main-tabs",
-                value="snapshot",
-                children=[
-                    build_snapshot_tab(),
-                    build_feature_sensitivity_tab(),
-                    build_acceptance_tab(),
-                    build_performance_tab(),
-                ],
-                style={"marginTop": "1rem"},
-            ),
         ],
         style={
             "fontFamily": "'Segoe UI', sans-serif",
