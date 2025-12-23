@@ -504,7 +504,7 @@ def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> N
 
 
 def create_app() -> Dash:
-    app = Dash(__name__)
+    app = Dash(__name__, suppress_callback_exceptions=True)
     model_name_options = build_model_name_options()
     app.layout = html.Div(
         [
@@ -531,10 +531,10 @@ def create_app() -> Dash:
                 id="main-tabs",
                 value="snapshot",
                 children=[
-                    build_snapshot_tab(),
-                    build_feature_sensitivity_tab(),
-                    build_acceptance_tab(),
-                    build_performance_tab(),
+                    dcc.Tab(label="Snapshot explorer", value="snapshot"),
+                    dcc.Tab(label="Feature sensitivity", value="sensitivity"),
+                    dcc.Tab(label="Acceptance explorer", value="acceptance"),
+                    dcc.Tab(label="Performance tracker", value="performance"),
                 ],
                 style={"marginTop": "1rem"},
             ),
@@ -783,6 +783,10 @@ def create_app() -> Dash:
                 n_intervals=0,
                 max_intervals=1,
             ),            
+            html.Div(
+                id="tab-content",
+                children=build_snapshot_tab().children,
+            ),
         ],
         style={
             "fontFamily": "'Segoe UI', sans-serif",
@@ -833,6 +837,22 @@ def create_app() -> Dash:
             standard_style["display"] = "none"
             acceptance_style["display"] = "flex"
         return standard_style, acceptance_style
+
+
+    @app.callback(
+        Output("tab-content", "children"),
+        Input("main-tabs", "value"),
+    )
+    def render_tab_content(active_tab: str):
+        if active_tab == "snapshot":
+            return build_snapshot_tab().children
+        if active_tab == "sensitivity":
+            return build_feature_sensitivity_tab().children
+        if active_tab == "acceptance":
+            return build_acceptance_tab().children
+        if active_tab == "performance":
+            return build_performance_tab().children
+        return build_snapshot_tab().children
 
 
     @app.callback(
