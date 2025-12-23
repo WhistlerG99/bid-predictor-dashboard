@@ -2,9 +2,6 @@
 from __future__ import annotations
 
 import os
-from dotenv import load_dotenv
-load_dotenv()
-
 from copy import deepcopy
 from typing import Optional
 
@@ -17,6 +14,7 @@ from datetime import datetime, timedelta
 import mlflow
 import pandas as pd
 from dash import Dash, Input, Output, State, callback_context, dcc, html
+from mlflow.exceptions import MlflowException
 from dotenv import load_dotenv
 from pyarrow import fs as pyfs
 try:  # pragma: no cover - optional dependency in some environments
@@ -27,7 +25,6 @@ try:  # pragma: no cover - optional dependency
     import psycopg2
 except ImportError:  # pragma: no cover
     psycopg2 = None
-
 # from bid_predictor.utils import detect_execution_environment
 
 from bid_predictor_ui import (
@@ -61,6 +58,12 @@ from bid_predictor_ui.performance_tracker import (
     register_performance_callbacks,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+load_dotenv()
+
+
 # if detect_execution_environment()[0] in (
 #         "sagemaker_notebook",
 #         "sagemaker_terminal",
@@ -68,6 +71,10 @@ from bid_predictor_ui.performance_tracker import (
 arn = os.environ["MLFLOW_AWS_ARN"]
 mlflow.set_tracking_uri(arn)
 default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
+# else:
+#     default_dataset_path = (
+#         "./data/air_canada_and_lot/evaluation_sets/eval_bid_data_snapshots_v2_3_or_mode_bids.parquet"
+#     )
 
 # Acceptance dataset configuration via S3 listing and Redis cache
 S3_DATASET_LISTING_URI = os.environ.get("S3_DATASET_LISTING_URI")
@@ -456,6 +463,13 @@ def _enrich_with_offer_status(dataset: pd.DataFrame, hour_timestamps: Optional[l
     if missing_offer_ids:
         print(f"[Offer status] Fetching {len(missing_offer_ids)} offer_statuses from Redshift...")
         fetched_statuses = _fetch_offer_statuses(missing_offer_ids)
+        n = 0
+        for k,v in fetched_statuses.items():
+            logger.warning(f"[Offer status] {k} ({type(k)}): {v}")
+            n += 1
+            if n == 100:
+                break
+
         offer_statuses.update(fetched_statuses)
         
         # Cache the fetched statuses for the relevant hours
@@ -470,9 +484,19 @@ def _enrich_with_offer_status(dataset: pd.DataFrame, hour_timestamps: Optional[l
     dataset["offer_id_str"] = dataset["offer_id"].astype(str)
     dataset["offer_status"] = dataset["offer_id_str"].map(offer_statuses)
     
+    # for k,v in fetched_statuses.items():
+    #     offstts = dataset[dataset["offer_id_str"] == k]["offer_status"]
+    #     if offstts.empty:
+    #         logger.warning(f"[Offer status] No offer_status for {k} ({type(k)})")
+    #     else:
+    #         logger.warning(f"[Offer status] {k} ({type(k)}) has offer_status {offstts.iloc[0]}, {v} ({type(v)})")
     # Show "pending" for offers without status (not TICKETED or EXPIRED)
     dataset["offer_status"] = dataset["offer_status"].fillna("pending")
     
+
+    logger.warning(f"[Offer status] {dataset.head(5)}")
+
+    logger.warning(f"[Offer status] {dataset[['offer_status', 'offer_status']].head(10)}")
     # Drop temporary column
     dataset = dataset.drop(columns=["offer_id_str"], errors="ignore")
     
@@ -498,6 +522,7 @@ def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> N
     except Exception as exc:
         print(f"[Acceptance loader] Warning: Failed to populate internal cache: {exc}")
 
+
 # -- Dash application --------------------------------------------------------------------------
 
 
@@ -515,69 +540,6 @@ def create_app() -> Dash:
                         "Load a dataset snapshot and an MLflow-registered model to explore acceptance probabilities.",
                         style={"margin": "0", "color": "#16324f"},
                     ),
-                    html.Div(
-                        [
-                            html.Label(
-                                "Lookback (hours)",
-                                style={
-                                    "fontSize": "0.85rem",
-                                    "fontWeight": "600",
-                                    "marginRight": "0.5rem",
-                                },
-                            ),
-                            dcc.Input(
-                                id="acceptance-lookback-hours",
-                                type="number",
-                                min=1,
-                                step=1,
-                                value=DEFAULT_S3_LOOKBACK_HOURS,
-                                style={
-                                    "width": "5rem",
-                                    "fontSize": "0.85rem",
-                                },
-                            ),
-                            html.Button(
-                                "Apply",
-                                id="acceptance-lookback-apply",
-                                n_clicks=0,
-                                style={
-                                    "marginLeft": "0.75rem",
-                                    "padding": "0.25rem 0.75rem",
-                                    "fontSize": "0.8rem",
-                                    "borderRadius": "6px",
-                                    "border": "none",
-                                    "backgroundColor": "#1b4965",
-                                    "color": "white",
-                                    "cursor": "pointer",
-                                },
-                            ),
-                        ],
-                        style={
-                            "marginTop": "0.5rem",
-                            "display": "flex",
-                            "alignItems": "center",
-                        },
-                    ),
-                    html.Div(
-                        id="acceptance-dataset-status",
-                        style={
-                            "marginTop": "0.4rem",
-                            "fontSize": "0.85rem",
-                            "color": "#333333",
-                        },
-                    ),
-                    dcc.Loading(
-                        id="acceptance-loader",
-                        type="circle",
-                        children=html.Div(
-                            id="acceptance-loader-status",
-                            style={
-                                "marginTop": "0.25rem",
-                                "fontSize": "0.85rem",
-                                "color": "#555555",
-                            },
-                        ),
-                    ),
                 ],
                 style={
                     "background": "linear-gradient(90deg, #e0fbfc 0%, #c2dfe3 100%)",
@@ -587,6 +549,233 @@ def create_app() -> Dash:
                     "marginBottom": "1.5rem",
                 },
             ),
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    html.Label(
+                                        "Dataset path", style={"fontWeight": "600"}
+                                    ),
+                                    dcc.Input(
+                                        id="dataset-path",
+                                        type="text",
+                                        value=default_dataset_path,
+                                        placeholder="Path to bid_data_snapshots_v2.parquet",
+                                        style={
+                                            "width": "100%",
+                                            "marginBottom": "0.5rem",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Load dataset",
+                                        id="load-dataset",
+                                        n_clicks=0,
+                                        style={
+                                            "width": "100%",
+                                            "backgroundColor": "#1b4965",
+                                            "color": "white",
+                                            "border": "none",
+                                            "padding": "0.6rem",
+                                            "borderRadius": "6px",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Reload dataset",
+                                        id="reload-dataset",
+                                        n_clicks=0,
+                                        style={
+                                            "width": "100%",
+                                            "marginTop": "0.5rem",
+                                            "backgroundColor": "#457b9d",
+                                            "color": "white",
+                                            "border": "none",
+                                            "padding": "0.5rem",
+                                            "borderRadius": "6px",
+                                        },
+                                    ),
+                                    dcc.Loading(
+                                        id="dataset-loading",
+                                        type="circle",
+                                        children=html.Div(
+                                            id="dataset-status",
+                                            className="status-message",
+                                            style={"marginTop": "0.5rem"},
+                                        ),
+                                    ),
+                                ],
+                                style={
+                                    "flex": "1",
+                                    "padding": "1rem",
+                                    "backgroundColor": "#f7fff7",
+                                    "borderRadius": "12px",
+                                    "boxShadow": "0 2px 8px rgba(0, 0, 0, 0.05)",
+                                },
+                            ),
+                            html.Div(
+                                [
+                                    html.Label(
+                                        "MLflow tracking URI",
+                                        style={"fontWeight": "600"},
+                                    ),
+                                    dcc.Input(
+                                        id="mlflow-tracking-uri",
+                                        type="text",
+                                        value=mlflow.get_tracking_uri(),
+                                        placeholder="http://localhost:5000",
+                                        style={
+                                            "width": "100%",
+                                            "marginBottom": "0.5rem",
+                                        },
+                                    ),
+                                    html.Label("Model name", style={"fontWeight": "600"}),
+                                    dcc.Input(
+                                        id="model-name",
+                                        type="text",
+                                        placeholder="Registered model name",
+                                        style={
+                                            "width": "100%",
+                                            "marginBottom": "0.5rem",
+                                        },
+                                    ),
+                                    html.Label(
+                                        "Model stage or version",
+                                        style={"fontWeight": "600"},
+                                    ),
+                                    dcc.Input(
+                                        id="model-stage",
+                                        type="text",
+                                        placeholder="e.g. Production or 5",
+                                        style={
+                                            "width": "100%",
+                                            "marginBottom": "0.5rem",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Load model",
+                                        id="load-model",
+                                        n_clicks=0,
+                                        style={
+                                            "width": "100%",
+                                            "backgroundColor": "#ff6b6b",
+                                            "color": "white",
+                                            "border": "none",
+                                            "padding": "0.6rem",
+                                            "borderRadius": "6px",
+                                        },
+                                    ),
+                                    dcc.Loading(
+                                        id="model-loading",
+                                        type="circle",
+                                        children=html.Div(
+                                            id="model-status",
+                                            className="status-message",
+                                            style={"marginTop": "0.5rem"},
+                                        ),
+                                    ),
+                                ],
+                                style={
+                                    "flex": "1",
+                                    "padding": "1rem",
+                                    "backgroundColor": "#f7fff7",
+                                    "borderRadius": "12px",
+                                    "boxShadow": "0 2px 8px rgba(0, 0, 0, 0.05)",
+                                },
+                            ),
+                        ],
+                        id="standard-controls",
+                        style={
+                            "display": "flex",
+                            "flexWrap": "wrap",
+                            "gap": "1.5rem",
+                            "marginBottom": "1.5rem",
+                        },
+                    ),
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    html.Label(
+                                        "Lookback (hours)",
+                                        style={
+                                            "fontSize": "0.85rem",
+                                            "fontWeight": "600",
+                                            "marginRight": "0.5rem",
+                                        },
+                                    ),
+                                    dcc.Input(
+                                        id="acceptance-lookback-hours",
+                                        type="number",
+                                        min=1,
+                                        step=1,
+                                        value=DEFAULT_S3_LOOKBACK_HOURS,
+                                        style={
+                                            "width": "5rem",
+                                            "fontSize": "0.85rem",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Apply",
+                                        id="acceptance-lookback-apply",
+                                        n_clicks=0,
+                                        style={
+                                            "marginLeft": "0.75rem",
+                                            "padding": "0.25rem 0.75rem",
+                                            "fontSize": "0.8rem",
+                                            "borderRadius": "6px",
+                                            "border": "none",
+                                            "backgroundColor": "#1b4965",
+                                            "color": "white",
+                                            "cursor": "pointer",
+                                        },
+                                    ),
+                                ],
+                                style={
+                                    "marginTop": "0.5rem",
+                                    "display": "flex",
+                                    "alignItems": "center",
+                                },
+                                # style={
+                                #     "flex": "1",
+                                #     "padding": "1rem",
+                                #     "backgroundColor": "#f7fff7",
+                                #     "borderRadius": "12px",
+                                #     "boxShadow": "0 2px 8px rgba(0, 0, 0, 0.05)",
+                                # },
+                            ),
+                            html.Div(
+                                id="acceptance-dataset-status",
+                                style={
+                                    "marginTop": "0.4rem",
+                                    "fontSize": "0.85rem",
+                                    "color": "#333333",
+                                },
+                            ),
+                            dcc.Loading(
+                                id="acceptance-loader",
+                                type="circle",
+                                children=html.Div(
+                                    id="acceptance-loader-status",
+                                    style={
+                                        "marginTop": "0.25rem",
+                                        "fontSize": "0.85rem",
+                                        "color": "#555555",
+                                    },
+                                ),
+                            ),
+                        ],
+                        id="acceptance-controls",
+                        style={
+                            "display": "none",
+                            "flexWrap": "wrap",
+                            "gap": "1.5rem",
+                            "marginBottom": "1.5rem",
+                        },
+                    ),
+                ],
+            ),
+            dcc.Store(id="dataset-path-store"),
             dcc.Store(id="acceptance-dataset-path-store"),
             dcc.Store(id="model-uri-store"),
             dcc.Store(id="bid-records-store"),
@@ -613,7 +802,7 @@ def create_app() -> Dash:
                 interval=500,
                 n_intervals=0,
                 max_intervals=1,
-            ),
+            ),            
             dcc.Tabs(
                 id="main-tabs",
                 value="snapshot",
@@ -633,8 +822,11 @@ def create_app() -> Dash:
         },
     )
 
+    register_snapshot_callbacks(app)
+    register_feature_sensitivity_callbacks(app)
     register_acceptance_callbacks(app)
-    
+    register_performance_callbacks(app)
+
     # Start background hourly refresh thread
     if REDIS_URL and S3_DATASET_LISTING_URI:
         refresh_thread = threading.Thread(
@@ -649,6 +841,57 @@ def create_app() -> Dash:
         )
 
     # Callbacks -----------------------------------------------------------------------------
+
+    @app.callback(
+        Output("standard-controls", "style"),
+        Output("acceptance-controls", "style"),
+        Input("main-tabs", "value"),
+    )
+    def toggle_control_panels(active_tab: str):
+        standard_style = {
+            "display": "flex",
+            "flexWrap": "wrap",
+            "gap": "1.5rem",
+            "marginBottom": "1.5rem",
+        }
+        acceptance_style = {
+            "display": "none",
+            "flexWrap": "wrap",
+            "gap": "1.5rem",
+            "marginBottom": "1.5rem",
+        }
+        if active_tab in {"acceptance", "performance"}:
+            standard_style["display"] = "none"
+            acceptance_style["display"] = "flex"
+        return standard_style, acceptance_style
+
+    @app.callback(
+        Output("dataset-status", "children"),
+        Output("dataset-path-store", "data"),
+        Input("load-dataset", "n_clicks"),
+        Input("reload-dataset", "n_clicks"),
+        State("dataset-path", "value"),
+        prevent_initial_call=True,
+    )
+    def load_dataset(load_clicks: int, reload_clicks: int, path: str):
+        if not path:
+            return "Please provide a dataset path.", None
+
+        triggered = (
+            callback_context.triggered[0]["prop_id"].split(".")[0]
+            if callback_context.triggered
+            else ""
+        )
+        reload_flag = triggered == "reload-dataset"
+
+        try:
+            dataset = load_dataset_cached(path, reload=reload_flag)
+        except Exception as exc:  # pragma: no cover - user feedback
+            return f"Failed to load dataset: {exc}", None
+
+        status_prefix = "Reloaded" if reload_flag else "Loaded"
+        status = f"{status_prefix} dataset with {len(dataset):,} rows."
+        return status, path
 
     @app.callback(
         Output("acceptance-dataset-status", "children"),
@@ -916,6 +1159,53 @@ def create_app() -> Dash:
         # Populate internal cache so dropdowns work
         _populate_acceptance_cache(dataset, dataset_config)
         return status, dataset_config, loader_status
+
+    return app
+
+    @app.callback(
+        Output("model-status", "children"),
+        Output("model-uri-store", "data"),
+        Output("feature-config-store", "data"),
+        Input("load-model", "n_clicks"),
+        State("mlflow-tracking-uri", "value"),
+        State("model-name", "value"),
+        State("model-stage", "value"),
+        prevent_initial_call=True,
+    )
+    def load_model(n_clicks: int, tracking_uri: str, model_name: str, stage_or_version: str):
+        if not model_name:
+            return "Please enter a registered model name.", None
+
+        mlflow.set_tracking_uri(tracking_uri or mlflow.get_tracking_uri())
+        model_uri: Optional[str] = None
+        try:
+            if stage_or_version:
+                stage_or_version = stage_or_version.strip()
+                if stage_or_version.isdigit():
+                    model_uri = f"models:/{model_name}/{stage_or_version}"
+                else:
+                    model_uri = f"models:/{model_name}/{stage_or_version}"
+            else:
+                model_uri = f"models:/{model_name}/Production"
+            model = load_model_cached(model_uri)
+            raw_config = getattr(model, "feature_config_", None) or getattr(
+                model, "feature_config", None
+            )
+            ui_feature_config = build_ui_feature_config(raw_config)
+        except MlflowException as exc:  # pragma: no cover - user feedback
+            return (
+                f"Failed to load model: {exc}",
+                None,
+                deepcopy(DEFAULT_UI_FEATURE_CONFIG),
+            )
+        except Exception as exc:  # pragma: no cover
+            return (
+                f"Unexpected error while loading model: {exc}",
+                None,
+                deepcopy(DEFAULT_UI_FEATURE_CONFIG),
+            )
+
+        return f"Loaded model from {model_uri}", model_uri, ui_feature_config
 
     return app
 
