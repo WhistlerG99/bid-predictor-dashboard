@@ -29,6 +29,8 @@ except ImportError:  # pragma: no cover
 
 from bid_predictor_ui import (
     DEFAULT_UI_FEATURE_CONFIG,
+    build_model_name_options,
+    build_model_stage_or_version_options,
     build_ui_feature_config,
     load_dataset_cached,
     load_model_cached,
@@ -69,10 +71,10 @@ default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
 
 # Acceptance dataset configuration via S3 listing and Redis cache
 S3_DATASET_LISTING_URI = os.environ.get("S3_DATASET_LISTING_URI")
-DEFAULT_S3_LOOKBACK_HOURS = int(os.getenv("S3_DATASET_LOOKBACK_HOURS", "24"))
+DEFAULT_S3_LOOKBACK_HOURS = int(os.getenv("S3_DATASET_LOOKBACK_HOURS", "120"))
 REDIS_URL = os.getenv("REDIS_URL")
 # Rolling window cache: automatically refresh data every hour for this many hours
-ROLLING_WINDOW_HOURS = int(os.getenv("ROLLING_WINDOW_HOURS", "48"))
+ROLLING_WINDOW_HOURS = int(os.getenv("ROLLING_WINDOW_HOURS", "240"))
 
 # Redshift configuration for offer_status
 REDSHIFT_HOST = os.getenv("REDSHIFT_HOST")
@@ -502,7 +504,8 @@ def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> N
 
 
 def create_app() -> Dash:
-    app = Dash(__name__)
+    app = Dash(__name__, suppress_callback_exceptions=True)
+    model_name_options = build_model_name_options()
     app.layout = html.Div(
         [
             html.Div(
@@ -523,6 +526,17 @@ def create_app() -> Dash:
                     "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.1)",
                     "marginBottom": "1.5rem",
                 },
+            ),
+            dcc.Tabs(
+                id="main-tabs",
+                value="snapshot",
+                children=[
+                    dcc.Tab(label="Snapshot explorer", value="snapshot"),
+                    dcc.Tab(label="Feature sensitivity", value="sensitivity"),
+                    dcc.Tab(label="Acceptance explorer", value="acceptance"),
+                    dcc.Tab(label="Performance tracker", value="performance"),
+                ],
+                style={"marginTop": "1rem", "marginBottom": "1rem"},
             ),
             html.Div(
                 [
@@ -590,25 +604,13 @@ def create_app() -> Dash:
                             ),
                             html.Div(
                                 [
-                                    html.Label(
-                                        "MLflow tracking URI",
-                                        style={"fontWeight": "600"},
-                                    ),
-                                    dcc.Input(
-                                        id="mlflow-tracking-uri",
-                                        type="text",
-                                        value=mlflow.get_tracking_uri(),
-                                        placeholder="http://localhost:5000",
-                                        style={
-                                            "width": "100%",
-                                            "marginBottom": "0.5rem",
-                                        },
-                                    ),
                                     html.Label("Model name", style={"fontWeight": "600"}),
-                                    dcc.Input(
+                                    dcc.Dropdown(
                                         id="model-name",
-                                        type="text",
-                                        placeholder="Registered model name",
+                                        options=model_name_options,
+                                        placeholder="Select a registered model",
+                                        value=None,
+                                        clearable=True,
                                         style={
                                             "width": "100%",
                                             "marginBottom": "0.5rem",
@@ -618,10 +620,13 @@ def create_app() -> Dash:
                                         "Model stage or version",
                                         style={"fontWeight": "600"},
                                     ),
-                                    dcc.Input(
+                                    dcc.Dropdown(
                                         id="model-stage",
-                                        type="text",
-                                        placeholder="e.g. Production or 5",
+                                        options=[],
+                                        placeholder="Select a stage or version",
+                                        value=None,
+                                        clearable=True,
+                                        disabled=True,
                                         style={
                                             "width": "100%",
                                             "marginBottom": "0.5rem",
@@ -674,7 +679,6 @@ def create_app() -> Dash:
                                     html.Label(
                                         "Lookback (hours)",
                                         style={
-                                            "fontSize": "0.85rem",
                                             "fontWeight": "600",
                                             "marginRight": "0.5rem",
                                         },
@@ -687,7 +691,6 @@ def create_app() -> Dash:
                                         value=DEFAULT_S3_LOOKBACK_HOURS,
                                         style={
                                             "width": "5rem",
-                                            "fontSize": "0.85rem",
                                         },
                                     ),
                                     html.Button(
@@ -697,7 +700,6 @@ def create_app() -> Dash:
                                         style={
                                             "marginLeft": "0.75rem",
                                             "padding": "0.25rem 0.75rem",
-                                            "fontSize": "0.8rem",
                                             "borderRadius": "6px",
                                             "border": "none",
                                             "backgroundColor": "#1b4965",
@@ -710,45 +712,47 @@ def create_app() -> Dash:
                                     "marginTop": "0.5rem",
                                     "display": "flex",
                                     "alignItems": "center",
+                                    "width": "100%",
                                 },
-                                # style={
-                                #     "flex": "1",
-                                #     "padding": "1rem",
-                                #     "backgroundColor": "#f7fff7",
-                                #     "borderRadius": "12px",
-                                #     "boxShadow": "0 2px 8px rgba(0, 0, 0, 0.05)",
-                                # },
                             ),
                             html.Div(
                                 id="acceptance-dataset-status",
                                 style={
-                                    "marginTop": "0.4rem",
-                                    "fontSize": "0.85rem",
-                                    "color": "#333333",
+                                    "marginTop": "0.5rem",
+                                    "width": "100%",
                                 },
                             ),
-                            dcc.Loading(
-                                id="acceptance-loader",
-                                type="circle",
-                                children=html.Div(
-                                    id="acceptance-loader-status",
-                                    style={
-                                        "marginTop": "0.25rem",
-                                        "fontSize": "0.85rem",
-                                        "color": "#555555",
-                                    },
+                            html.Div(  # <-- forces block layout
+                                dcc.Loading(
+                                    id="acceptance-loader",
+                                    type="circle",
+                                    children=html.Div(
+                                        id="acceptance-loader-status",
+                                        style={"marginTop": "0.5rem"},
+                                    ),
                                 ),
-                            ),
+                                style={"width": "100%"},
+                            ),                                
                         ],
-                        id="acceptance-controls",
                         style={
-                            "display": "none",
-                            "flexWrap": "wrap",
-                            "gap": "1.5rem",
+                            "display": "flex",
+                            "flexDirection": "column",
+                            "background": "linear-gradient(90deg, #e0fbfc 0%, #c2dfe3 100%)",
+                            "padding": "1.5rem",
+                            "borderRadius": "12px",
+                            "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.1)",
                             "marginBottom": "1.5rem",
                         },
+                        id="acceptance-controls",                    
                     ),
                 ],
+                style={
+                    "background": "linear-gradient(90deg, #e0fbfc 0%, #c2dfe3 100%)",
+                    "padding": "1.5rem",
+                    "borderRadius": "12px",
+                    "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.1)",
+                    "marginBottom": "1.5rem",
+                },                          
             ),
             dcc.Store(id="dataset-path-store"),
             dcc.Store(id="acceptance-dataset-path-store"),
@@ -778,16 +782,9 @@ def create_app() -> Dash:
                 n_intervals=0,
                 max_intervals=1,
             ),            
-            dcc.Tabs(
-                id="main-tabs",
-                value="snapshot",
-                children=[
-                    build_snapshot_tab(),
-                    build_feature_sensitivity_tab(),
-                    build_acceptance_tab(),
-                    build_performance_tab(),
-                ],
-                style={"marginTop": "1rem"},
+            html.Div(
+                id="tab-content",
+                children=build_snapshot_tab().children,
             ),
         ],
         style={
@@ -839,6 +836,22 @@ def create_app() -> Dash:
             standard_style["display"] = "none"
             acceptance_style["display"] = "flex"
         return standard_style, acceptance_style
+
+
+    @app.callback(
+        Output("tab-content", "children"),
+        Input("main-tabs", "value"),
+    )
+    def render_tab_content(active_tab: str):
+        if active_tab == "snapshot":
+            return build_snapshot_tab().children
+        if active_tab == "sensitivity":
+            return build_feature_sensitivity_tab().children
+        if active_tab == "acceptance":
+            return build_acceptance_tab().children
+        if active_tab == "performance":
+            return build_performance_tab().children
+        return build_snapshot_tab().children
 
 
     @app.callback(
@@ -1139,30 +1152,47 @@ def create_app() -> Dash:
 
 
     @app.callback(
+        Output("model-stage", "options"),
+        Output("model-stage", "value"),
+        Output("model-stage", "disabled"),
+        Input("model-name", "value"),
+    )
+    def update_model_stage_options(model_name: Optional[str]):
+        if not model_name:
+            return [], None, True
+
+        options = build_model_stage_or_version_options(model_name)
+        return options, None, False
+
+
+    @app.callback(
         Output("model-status", "children"),
         Output("model-uri-store", "data"),
         Output("feature-config-store", "data"),
         Input("load-model", "n_clicks"),
-        State("mlflow-tracking-uri", "value"),
         State("model-name", "value"),
         State("model-stage", "value"),
         prevent_initial_call=True,
     )
-    def load_model(n_clicks: int, tracking_uri: str, model_name: str, stage_or_version: str):
+    def load_model(n_clicks: int, model_name: str, stage_or_version: str):
         if not model_name:
-            return "Please enter a registered model name.", None
+            return (
+                "Select a registered model name.",
+                None,
+                deepcopy(DEFAULT_UI_FEATURE_CONFIG),
+            )
 
-        mlflow.set_tracking_uri(tracking_uri or mlflow.get_tracking_uri())
+        if not stage_or_version:
+            return (
+                "Select a model stage or version.",
+                None,
+                deepcopy(DEFAULT_UI_FEATURE_CONFIG),
+            )
+
         model_uri: Optional[str] = None
         try:
-            if stage_or_version:
-                stage_or_version = stage_or_version.strip()
-                if stage_or_version.isdigit():
-                    model_uri = f"models:/{model_name}/{stage_or_version}"
-                else:
-                    model_uri = f"models:/{model_name}/{stage_or_version}"
-            else:
-                model_uri = f"models:/{model_name}/Production"
+            stage_or_version = stage_or_version.strip()
+            model_uri = f"models:/{model_name}/{stage_or_version}"
             model = load_model_cached(model_uri)
             raw_config = getattr(model, "feature_config_", None) or getattr(
                 model, "feature_config", None
