@@ -71,10 +71,10 @@ default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
 
 # Acceptance dataset configuration via S3 listing and Redis cache
 S3_DATASET_LISTING_URI = os.environ.get("S3_DATASET_LISTING_URI")
-DEFAULT_S3_LOOKBACK_HOURS = int(os.getenv("S3_DATASET_LOOKBACK_HOURS", "24"))
+DEFAULT_S3_LOOKBACK_HOURS = int(os.getenv("S3_DATASET_LOOKBACK_HOURS", "120"))
 REDIS_URL = os.getenv("REDIS_URL")
 # Rolling window cache: automatically refresh data every hour for this many hours
-ROLLING_WINDOW_HOURS = int(os.getenv("ROLLING_WINDOW_HOURS", "48"))
+ROLLING_WINDOW_HOURS = int(os.getenv("ROLLING_WINDOW_HOURS", "240"))
 
 # Redshift configuration for offer_status
 REDSHIFT_HOST = os.getenv("REDSHIFT_HOST")
@@ -679,7 +679,6 @@ def create_app() -> Dash:
                                     html.Label(
                                         "Lookback (hours)",
                                         style={
-                                            "fontSize": "0.85rem",
                                             "fontWeight": "600",
                                             "marginRight": "0.5rem",
                                         },
@@ -692,7 +691,6 @@ def create_app() -> Dash:
                                         value=DEFAULT_S3_LOOKBACK_HOURS,
                                         style={
                                             "width": "5rem",
-                                            "fontSize": "0.85rem",
                                         },
                                     ),
                                     html.Button(
@@ -702,7 +700,6 @@ def create_app() -> Dash:
                                         style={
                                             "marginLeft": "0.75rem",
                                             "padding": "0.25rem 0.75rem",
-                                            "fontSize": "0.8rem",
                                             "borderRadius": "6px",
                                             "border": "none",
                                             "backgroundColor": "#1b4965",
@@ -715,45 +712,47 @@ def create_app() -> Dash:
                                     "marginTop": "0.5rem",
                                     "display": "flex",
                                     "alignItems": "center",
+                                    "width": "100%",
                                 },
-                                # style={
-                                #     "flex": "1",
-                                #     "padding": "1rem",
-                                #     "backgroundColor": "#f7fff7",
-                                #     "borderRadius": "12px",
-                                #     "boxShadow": "0 2px 8px rgba(0, 0, 0, 0.05)",
-                                # },
                             ),
                             html.Div(
                                 id="acceptance-dataset-status",
                                 style={
-                                    "marginTop": "0.4rem",
-                                    "fontSize": "0.85rem",
-                                    "color": "#333333",
+                                    "marginTop": "0.5rem",
+                                    "width": "100%",
                                 },
                             ),
-                            dcc.Loading(
-                                id="acceptance-loader",
-                                type="circle",
-                                children=html.Div(
-                                    id="acceptance-loader-status",
-                                    style={
-                                        "marginTop": "0.25rem",
-                                        "fontSize": "0.85rem",
-                                        "color": "#555555",
-                                    },
+                            html.Div(  # <-- forces block layout
+                                dcc.Loading(
+                                    id="acceptance-loader",
+                                    type="circle",
+                                    children=html.Div(
+                                        id="acceptance-loader-status",
+                                        style={"marginTop": "0.5rem"},
+                                    ),
                                 ),
-                            ),
+                                style={"width": "100%"},
+                            ),                                
                         ],
-                        id="acceptance-controls",
                         style={
-                            "display": "none",
-                            "flexWrap": "wrap",
-                            "gap": "1.5rem",
+                            "display": "flex",
+                            "flexDirection": "column",
+                            "background": "linear-gradient(90deg, #e0fbfc 0%, #c2dfe3 100%)",
+                            "padding": "1.5rem",
+                            "borderRadius": "12px",
+                            "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.1)",
                             "marginBottom": "1.5rem",
                         },
+                        id="acceptance-controls",                    
                     ),
                 ],
+                style={
+                    "background": "linear-gradient(90deg, #e0fbfc 0%, #c2dfe3 100%)",
+                    "padding": "1.5rem",
+                    "borderRadius": "12px",
+                    "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.1)",
+                    "marginBottom": "1.5rem",
+                },                          
             ),
             dcc.Store(id="dataset-path-store"),
             dcc.Store(id="acceptance-dataset-path-store"),
