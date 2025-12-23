@@ -112,9 +112,9 @@ def test_performance_overview_controls_and_table_present():
     threshold_slider = _find_component(section, "performance-overview-threshold")
     carrier_dropdown = _find_component(section, "performance-overview-carrier")
     hours_range = _find_component(section, "performance-overview-hours-range")
-    table = _find_component(section, "performance-overview-table")
+    grid = _find_component(section, "performance-overview-grid")
 
     assert threshold_slider is not None, "Performance overview threshold slider should be present"
     assert carrier_dropdown is not None, "Performance overview carrier dropdown should be present"
     assert hours_range is not None, "Performance overview hours range slider should be present"
-    assert table is not None, "Performance overview table should be present"
+    assert grid is not None, "Performance overview grid should be present"

@@ -5,7 +5,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from dash import Dash, Input, Output, callback
+from dash import Dash, Input, Output, callback, html
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -168,12 +168,70 @@ def _format_count_value(value: Optional[float]) -> str:
     return f"{int(value)}"
 
 
-def _performance_overview_rows(
+def _metric_tile(label: str, value: str) -> html.Div:
+    return html.Div(
+        [
+            html.Div(
+                label,
+                style={
+                    "fontSize": "0.95rem",
+                    "fontWeight": 700,
+                    "color": "#1b4965",
+                    "fontFamily": "Inter, 'Segoe UI', sans-serif",
+                },
+            ),
+            html.Div(
+                value,
+                style={
+                    "fontSize": "1.4rem",
+                    "fontWeight": 700,
+                    "color": "#16324f",
+                    "fontFamily": "Inter, 'Segoe UI', sans-serif",
+                },
+            ),
+        ],
+        style={
+            "padding": "0.75rem",
+            "backgroundColor": "#f8fafc",
+            "borderRadius": "10px",
+            "display": "flex",
+            "flexDirection": "column",
+            "gap": "0.35rem",
+        },
+    )
+
+
+def _metric_section(title: str, tiles: List[html.Div]) -> html.Div:
+    return html.Div(
+        [
+            html.Div(
+                title,
+                style={
+                    "fontSize": "1rem",
+                    "fontWeight": 700,
+                    "color": "#1b4965",
+                    "fontFamily": "Inter, 'Segoe UI', sans-serif",
+                },
+            ),
+            html.Div(
+                tiles,
+                style={
+                    "display": "grid",
+                    "gridTemplateColumns": "repeat(auto-fit, minmax(180px, 1fr))",
+                    "gap": "0.75rem",
+                },
+            ),
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+    )
+
+
+def _performance_overview_tiles(
     df: pd.DataFrame,
     threshold: float,
     carrier: Optional[str],
     hours_range: Optional[Iterable[float]],
-) -> Tuple[List[Dict[str, str]], Optional[str]]:
+) -> Tuple[List[html.Div], Optional[str]]:
     working = _filter_acceptance_rows(df, carrier, hours_range)
     working["accept_prob"] = pd.to_numeric(working.get("accept_prob"), errors="coerce")
     working = working.dropna(subset=["accept_prob", "offer_status"])
@@ -200,23 +258,36 @@ def _performance_overview_rows(
     tnr_val = negative_recall
     fnr_val = fn / pos if pos else np.nan
 
-    rows = [
-        {"Metric": "Total number of items", "Value": _format_count_value(total)},
-        {"Metric": "Number of true positives", "Value": _format_count_value(tp)},
-        {"Metric": "Number of false positives", "Value": _format_count_value(fp)},
-        {"Metric": "Number of true negatives", "Value": _format_count_value(tn)},
-        {"Metric": "Number of false negatives", "Value": _format_count_value(fn)},
-        {"Metric": "Accuracy", "Value": _format_metric_value(accuracy)},
-        {"Metric": "Precision", "Value": _format_metric_value(precision)},
-        {"Metric": "Recall", "Value": _format_metric_value(recall)},
-        {"Metric": "Negative Precision", "Value": _format_metric_value(negative_precision)},
-        {"Metric": "Negative Recall", "Value": _format_metric_value(negative_recall)},
-        {"Metric": "True positive Rate", "Value": _format_metric_value(tpr_val)},
-        {"Metric": "False Positive Rate", "Value": _format_metric_value(fpr_val)},
-        {"Metric": "True negative Rate", "Value": _format_metric_value(tnr_val)},
-        {"Metric": "False negative rate", "Value": _format_metric_value(fnr_val)},
+    count_tiles = [
+        _metric_tile("Total number of items", _format_count_value(total)),
+        _metric_tile("Number of true positives", _format_count_value(tp)),
+        _metric_tile("Number of false positives", _format_count_value(fp)),
+        _metric_tile("Number of true negatives", _format_count_value(tn)),
+        _metric_tile("Number of false negatives", _format_count_value(fn)),
     ]
-    return rows, None
+    positive_tiles = [
+        _metric_tile("Accuracy", _format_metric_value(accuracy)),
+        _metric_tile("Precision", _format_metric_value(precision)),
+        _metric_tile("Recall", _format_metric_value(recall)),
+    ]
+    negative_tiles = [
+        _metric_tile("Negative Precision", _format_metric_value(negative_precision)),
+        _metric_tile("Negative Recall", _format_metric_value(negative_recall)),
+    ]
+    rate_tiles = [
+        _metric_tile("True positive Rate", _format_metric_value(tpr_val)),
+        _metric_tile("False Positive Rate", _format_metric_value(fpr_val)),
+        _metric_tile("True negative Rate", _format_metric_value(tnr_val)),
+        _metric_tile("False negative rate", _format_metric_value(fnr_val)),
+    ]
+
+    sections = [
+        _metric_section("Counts", count_tiles),
+        _metric_section("Positive-class metrics", positive_tiles),
+        _metric_section("Negative-class metrics", negative_tiles),
+        _metric_section("Rates", rate_tiles),
+    ]
+    return sections, None
 
 
 def _accept_prob_distribution(
@@ -679,7 +750,7 @@ def register_performance_callbacks(app: Dash) -> None:
 
     @callback(
         Output("performance-overview-status", "children"),
-        Output("performance-overview-table", "data"),
+        Output("performance-overview-grid", "children"),
         Input("acceptance-dataset-path-store", "data"),
         Input("performance-overview-threshold", "value"),
         Input("performance-overview-carrier", "value"),
@@ -690,7 +761,7 @@ def register_performance_callbacks(app: Dash) -> None:
         threshold: Optional[float],
         carrier: Optional[str],
         hours_range: Optional[Iterable[float]],
-    ) -> Tuple[str, List[Dict[str, str]]]:
+    ) -> Tuple[str, List[html.Div]]:
         if not dataset_config:
             message = "Load a dataset in the acceptance explorer controls to view performance metrics."
             return message, []
@@ -710,10 +781,10 @@ def register_performance_callbacks(app: Dash) -> None:
         dataset = dataset.copy()
         dataset["accept_prob"] = prob_series
 
-        rows, error = _performance_overview_rows(
+        sections, error = _performance_overview_tiles(
             dataset, float(threshold or 0.0), carrier, hours_range
         )
-        return (error or ""), rows
+        return (error or ""), sections
 
     @callback(
         Output("performance-status", "children"),

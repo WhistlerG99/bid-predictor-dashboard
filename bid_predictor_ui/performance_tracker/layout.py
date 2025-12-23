@@ -1,7 +1,7 @@
 """Layout for the performance tracker tab."""
 from __future__ import annotations
 
-from dash import dash_table, dcc, html
+from dash import dcc, html
 
 
 CONTROL_CARD_STYLE = {
@@ -294,27 +294,13 @@ def _build_performance_overview_section() -> html.Div:
                 className="status-message",
                 style={"marginBottom": "0.5rem", "color": "#c1121f", "fontWeight": 600},
             ),
-            dash_table.DataTable(
-                id="performance-overview-table",
-                columns=[
-                    {"name": "Metric", "id": "Metric", "editable": False},
-                    {"name": "Value", "id": "Value", "editable": False},
-                ],
-                data=[],
-                style_cell={
-                    "textAlign": "left",
-                    "padding": "0.6rem",
-                    "backgroundColor": "#ffffff",
-                    "border": "1px solid #f1f5f9",
+            html.Div(
+                id="performance-overview-grid",
+                style={
+                    "display": "flex",
+                    "flexDirection": "column",
+                    "gap": "1rem",
                 },
-                style_header={
-                    "backgroundColor": "#1b4965",
-                    "color": "white",
-                    "fontWeight": "700",
-                    "textAlign": "left",
-                },
-                style_data={"whiteSpace": "normal", "height": "auto", "lineHeight": "1.3em"},
-                cell_selectable=False,
             ),
         ],
         style={
