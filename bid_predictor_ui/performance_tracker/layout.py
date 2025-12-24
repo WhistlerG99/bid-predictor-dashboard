@@ -460,6 +460,7 @@ def _build_roc_pr_section() -> html.Div:
                         style=card_style,
                     ),
                 ],
+                className="roc-pr-grid",
                 style={
                     "display": "grid",
                     "gridTemplateColumns": "repeat(2, minmax(0, 1fr))",

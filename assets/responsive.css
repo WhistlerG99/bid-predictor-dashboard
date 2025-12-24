@@ -14,6 +14,10 @@
   width: 100%;
 }
 
+.roc-pr-grid {
+  width: 100%;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     padding: 1rem !important;
@@ -87,6 +91,10 @@
 
   .chart-grid .dash-graph {
     height: 260px !important;
+  }
+
+  .roc-pr-grid {
+    grid-template-columns: 1fr !important;
   }
 
   .split-panel {

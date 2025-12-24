@@ -1,6 +1,7 @@
 from dash.development.base_component import Component
 
 from bid_predictor_ui.acceptance_explorer import layout as acceptance_layout
+from bid_predictor_ui.feature_sensitivity import layout as sensitivity_layout
 from bid_predictor_ui.performance_tracker import layout as performance_layout
 from bid_predictor_ui.snapshot import layout as snapshot_layout
 
@@ -59,3 +60,12 @@ def test_performance_layout_includes_responsive_classes():
     assert _find_component_with_class(overview_section, "side-panel") is not None
     assert _find_component_with_class(roc_section, "split-panel") is not None
     assert _find_component_with_class(roc_section, "side-panel") is not None
+    assert _find_component_with_class(roc_section, "roc-pr-grid") is not None
+
+
+def test_feature_sensitivity_layout_includes_responsive_classes():
+    tab = sensitivity_layout.build_feature_sensitivity_tab()
+
+    assert _find_component_with_class(tab, "tab-flex") is not None
+    assert _find_component_with_class(tab, "filter-card") is not None
+    assert _find_component_with_class(tab, "graph-tall") is not None
