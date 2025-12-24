@@ -128,6 +128,7 @@ def _build_filter_card() -> html.Div:
                 },
             ),
         ],
+        className="filter-card",
         style={
             "flex": "0 0 320px",
             "backgroundColor": "#ffffff",
@@ -199,6 +200,7 @@ def _build_graph_card() -> html.Div:
             dcc.Graph(
                 id="acceptance-prediction-graph",
                 figure={},
+                className="graph-tall",
                 style={"height": "760px"},
             ),
             html.Div(
@@ -274,19 +276,21 @@ def build_acceptance_tab() -> dcc.Tab:
             html.Div(
                 [
                     _build_filter_card(),
-                    html.Div(
-                        [
-                            _build_graph_card(),
-                            _build_table_card(),
-                        ],
-                        style={"flex": "1", "minWidth": "0"},
-                    ),
+            html.Div(
+                [
+                    _build_graph_card(),
+                    _build_table_card(),
                 ],
-                style={
-                    "display": "flex",
-                    "gap": "1.5rem",
-                    "alignItems": "flex-start",
-                    "flexWrap": "wrap",
+                className="tab-main",
+                style={"flex": "1", "minWidth": "0"},
+            ),
+        ],
+        className="tab-flex",
+        style={
+            "display": "flex",
+            "gap": "1.5rem",
+            "alignItems": "flex-start",
+            "flexWrap": "wrap",
                 },
             )
         ],

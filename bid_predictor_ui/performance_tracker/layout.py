@@ -115,6 +115,7 @@ def _build_chart_grid() -> html.Div:
 
     return html.Div(
         cells,
+        className="chart-grid",
         style={
             "display": "grid",
             "gridTemplateColumns": "repeat(2, minmax(0, 1fr))",
@@ -200,7 +201,11 @@ def _build_distribution_section() -> html.Div:
             ),
             html.Div(
                 [
-                    html.Div(control_panel, style={"flex": "0 0 320px"}),
+                    html.Div(
+                        control_panel,
+                        className="side-panel",
+                        style={"flex": "0 0 320px"},
+                    ),
                     html.Div(
                         [
                             html.H4(
@@ -222,6 +227,7 @@ def _build_distribution_section() -> html.Div:
                         },
                     ),
                 ],
+                className="split-panel",
                 style={"display": "flex", "gap": "1rem", "alignItems": "stretch"},
             ),
         ],
@@ -317,9 +323,14 @@ def _build_performance_overview_section() -> html.Div:
             html.H3("Performance Overview", style={"margin": "0 0 0.75rem 0", "color": "#1b4965"}),
             html.Div(
                 [
-                    html.Div(control_panel, style={"flex": "0 0 320px"}),
+                    html.Div(
+                        control_panel,
+                        className="side-panel",
+                        style={"flex": "0 0 320px"},
+                    ),
                     table_card,
                 ],
+                className="split-panel",
                 style={"display": "flex", "gap": "1rem", "alignItems": "stretch"},
             ),
         ],
@@ -467,9 +478,14 @@ def _build_roc_pr_section() -> html.Div:
             ),
             html.Div(
                 [
-                    html.Div(control_panel, style={"flex": "0 0 320px"}),
+                    html.Div(
+                        control_panel,
+                        className="side-panel",
+                        style={"flex": "0 0 320px"},
+                    ),
                     charts,
                 ],
+                className="split-panel",
                 style={"display": "flex", "gap": "1rem", "alignItems": "stretch"},
             ),
         ]

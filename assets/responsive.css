@@ -1,0 +1,110 @@
+.app-shell {
+  min-height: 100vh;
+}
+
+.controls-grid {
+  width: 100%;
+}
+
+.tab-flex {
+  width: 100%;
+}
+
+.chart-grid {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    padding: 1rem !important;
+  }
+
+  .app-hero {
+    padding: 1rem !important;
+  }
+
+  .controls-grid {
+    gap: 1rem !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-shell {
+    padding: 0.75rem !important;
+  }
+
+  .app-hero {
+    padding: 0.75rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .controls-grid {
+    flex-direction: column !important;
+  }
+
+  .controls-grid > .control-card {
+    width: 100% !important;
+    flex: 1 1 auto !important;
+  }
+
+  .control-card {
+    padding: 1rem !important;
+  }
+
+  #acceptance-controls {
+    padding: 1rem !important;
+  }
+
+  .tab-flex {
+    flex-direction: column !important;
+  }
+
+  .tab-main {
+    width: 100% !important;
+  }
+
+  .filter-card {
+    max-width: 100% !important;
+    flex: 1 1 auto !important;
+  }
+
+  .two-column-inputs {
+    flex-direction: column !important;
+  }
+
+  .two-column-inputs > div,
+  .two-column-inputs > input {
+    width: 100% !important;
+  }
+
+  .graph-tall {
+    height: 420px !important;
+  }
+
+  .chart-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .chart-grid .dash-graph {
+    height: 260px !important;
+  }
+
+  .split-panel {
+    flex-direction: column !important;
+  }
+
+  .side-panel {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+  }
+
+  .dash-tabs {
+    display: flex !important;
+    flex-wrap: wrap !important;
+  }
+
+  .dash-tab {
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.9rem !important;
+  }
+}
