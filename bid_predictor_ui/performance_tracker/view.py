@@ -5,7 +5,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from dash import Dash, Input, Output, callback
+from dash import Dash, Input, Output, callback, html
 from plotly import graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -154,6 +154,169 @@ def _actuals_chart(x: List[str], positives: List[int], negatives: List[int]) -> 
     fig.update_xaxes(title_text="Hours before departure window")
     fig.update_yaxes(title_text="Count")
     return fig
+
+
+def _format_metric_value(value: Optional[float], precision: int = 3) -> str:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "N/A"
+    return f"{value:.{precision}f}"
+
+
+def _format_count_value(value: Optional[float]) -> str:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "N/A"
+    return f"{int(value):,}"
+
+
+def _metric_tile(label: str, value: str) -> html.Div:
+    return html.Div(
+        [
+            html.Div(
+                label,
+                style={
+                    "fontSize": "0.95rem",
+                    "fontWeight": 700,
+                    "color": "#1b4965",
+                    "fontFamily": "Inter, 'Segoe UI', sans-serif",
+                },
+            ),
+            html.Div(
+                value,
+                style={
+                    "fontSize": "1.4rem",
+                    "fontWeight": 700,
+                    "color": "#16324f",
+                    "fontFamily": "Inter, 'Segoe UI', sans-serif",
+                },
+            ),
+        ],
+        style={
+            "padding": "0.75rem",
+            "backgroundColor": "#f8fafc",
+            "borderRadius": "10px",
+            "display": "flex",
+            "flexDirection": "column",
+            "gap": "0.35rem",
+        },
+    )
+
+
+def _metric_section(title: str, tiles: List[html.Div], columns: int) -> html.Div:
+    return html.Div(
+        [
+            html.Div(
+                title,
+                style={
+                    "fontSize": "1rem",
+                    "fontWeight": 700,
+                    "color": "#1b4965",
+                    "fontFamily": "Inter, 'Segoe UI', sans-serif",
+                },
+            ),
+            html.Div(
+                tiles,
+                style={
+                    "display": "grid",
+                    "gridTemplateColumns": f"repeat({columns}, minmax(0, 1fr))",
+                    "gap": "0.75rem",
+                },
+            ),
+        ],
+        style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+    )
+
+
+def _performance_overview_tiles(
+    df: pd.DataFrame,
+    threshold: float,
+    carrier: Optional[str],
+    hours_range: Optional[Iterable[float]],
+) -> Tuple[List[html.Div], Optional[str]]:
+    working = _filter_acceptance_rows(df, carrier, hours_range)
+    working["accept_prob"] = pd.to_numeric(working.get("accept_prob"), errors="coerce")
+    working = working.dropna(subset=["accept_prob", "offer_status"])
+    if working.empty:
+        return [], "No rows matched the selected filters."
+
+    actual_positive = working["offer_status"] == "TICKETED"
+    predicted_positive = working["accept_prob"] >= threshold * 100
+    tp = int((actual_positive & predicted_positive).sum())
+    tn = int((~actual_positive & ~predicted_positive).sum())
+    fp = int((~actual_positive & predicted_positive).sum())
+    fn = int((actual_positive & ~predicted_positive).sum())
+    total = int(tp + tn + fp + fn)
+    pos = tp + fn
+    neg = tn + fp
+
+    accuracy = (tp + tn) / total if total else np.nan
+    precision = tp / (tp + fp) if (tp + fp) else np.nan
+    recall = tp / (tp + fn) if (tp + fn) else np.nan
+    negative_precision = tn / (tn + fn) if (tn + fn) else np.nan
+    negative_recall = tn / (tn + fp) if (tn + fp) else np.nan
+    fpr_val = fp / neg if neg else np.nan
+    fnr_val = fn / pos if pos else np.nan
+
+    count_summary_tiles = [
+        _metric_tile("Total number of items", _format_count_value(total)),
+        _metric_tile("Number of actual positives", _format_count_value(pos)),
+        _metric_tile("Number of actual negatives", _format_count_value(neg)),
+    ]
+    count_detail_tiles = [
+        _metric_tile("Number of true positives", _format_count_value(tp)),
+        _metric_tile("Number of false positives", _format_count_value(fp)),
+        _metric_tile("Number of true negatives", _format_count_value(tn)),
+        _metric_tile("Number of false negatives", _format_count_value(fn)),
+    ]
+    positive_tiles = [
+        _metric_tile("Accuracy", _format_metric_value(accuracy)),
+        _metric_tile("Precision", _format_metric_value(precision)),
+        _metric_tile("Recall", _format_metric_value(recall)),
+    ]
+    negative_tiles = [
+        _metric_tile("Negative Precision", _format_metric_value(negative_precision)),
+        _metric_tile("Negative Recall", _format_metric_value(negative_recall)),
+    ]
+    rate_tiles = [
+        _metric_tile("False Positive Rate", _format_metric_value(fpr_val)),
+        _metric_tile("False negative rate", _format_metric_value(fnr_val)),
+    ]
+
+    sections = [
+        html.Div(
+            [
+                html.Div(
+                    "Counts",
+                    style={
+                        "fontSize": "1rem",
+                        "fontWeight": 700,
+                        "color": "#1b4965",
+                        "fontFamily": "Inter, 'Segoe UI', sans-serif",
+                    },
+                ),
+                html.Div(
+                    count_summary_tiles,
+                    style={
+                        "display": "grid",
+                        "gridTemplateColumns": "repeat(3, minmax(0, 1fr))",
+                        "gap": "0.75rem",
+                    },
+                ),
+                html.Div(
+                    count_detail_tiles,
+                    style={
+                        "display": "grid",
+                        "gridTemplateColumns": "repeat(4, minmax(0, 1fr))",
+                        "gap": "0.75rem",
+                    },
+                ),
+            ],
+            style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+        ),
+        _metric_section("Positive-class metrics", positive_tiles, 3),
+        _metric_section("Negative-class metrics", negative_tiles, 2),
+        _metric_section("Rates", rate_tiles, 2),
+    ]
+    return sections, None
 
 
 def _accept_prob_distribution(
@@ -574,6 +737,83 @@ def register_performance_callbacks(app: Dash) -> None:
 
         options = _build_carrier_options(dataset)
         return (options, "ALL")
+
+    @callback(
+        Output("performance-overview-carrier", "options"),
+        Output("performance-overview-carrier", "value"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def populate_performance_overview_carriers(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[List[Dict[str, str]], str]:
+        if not dataset_config:
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        options = _build_carrier_options(dataset)
+        return (options, "ALL")
+
+    @callback(
+        Output("performance-overview-hours-range", "min"),
+        Output("performance-overview-hours-range", "max"),
+        Output("performance-overview-hours-range", "value"),
+        Output("performance-overview-hours-range", "marks"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def configure_performance_overview_hours_range(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[float, float, List[float], Dict[int, str]]:
+        if not dataset_config:
+            return _compute_hours_range(pd.DataFrame())
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return _compute_hours_range(pd.DataFrame())
+
+        return _compute_hours_range(dataset)
+
+    @callback(
+        Output("performance-overview-status", "children"),
+        Output("performance-overview-grid", "children"),
+        Input("acceptance-dataset-path-store", "data"),
+        Input("performance-overview-threshold", "value"),
+        Input("performance-overview-carrier", "value"),
+        Input("performance-overview-hours-range", "value"),
+    )
+    def update_performance_overview_table(
+        dataset_config: Optional[Mapping[str, object]],
+        threshold: Optional[float],
+        carrier: Optional[str],
+        hours_range: Optional[Iterable[float]],
+    ) -> Tuple[str, List[html.Div]]:
+        if not dataset_config:
+            message = "Load a dataset in the acceptance explorer controls to view performance metrics."
+            return message, []
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception as exc:  # pragma: no cover - user feedback
+            message = f"Failed to load dataset: {exc}"
+            return message, []
+
+        prob_series = _select_first_series(
+            dataset, ["accept_prob", "acceptance_prob", "Acceptance Probability"]
+        )
+        if prob_series is None:
+            return "Dataset must include an 'accept_prob' column.", []
+
+        dataset = dataset.copy()
+        dataset["accept_prob"] = prob_series
+
+        sections, error = _performance_overview_tiles(
+            dataset, float(threshold or 0.0), carrier, hours_range
+        )
+        return (error or ""), sections
 
     @callback(
         Output("performance-status", "children"),
