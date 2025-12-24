@@ -165,7 +165,7 @@ def _format_metric_value(value: Optional[float], precision: int = 3) -> str:
 def _format_count_value(value: Optional[float]) -> str:
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return "N/A"
-    return f"{int(value)}"
+    return f"{int(value):,}"
 
 
 def _metric_tile(label: str, value: str) -> html.Div:
