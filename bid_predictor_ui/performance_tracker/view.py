@@ -201,7 +201,7 @@ def _metric_tile(label: str, value: str) -> html.Div:
     )
 
 
-def _metric_section(title: str, tiles: List[html.Div]) -> html.Div:
+def _metric_section(title: str, tiles: List[html.Div], columns: int) -> html.Div:
     return html.Div(
         [
             html.Div(
@@ -217,7 +217,7 @@ def _metric_section(title: str, tiles: List[html.Div]) -> html.Div:
                 tiles,
                 style={
                     "display": "grid",
-                    "gridTemplateColumns": "repeat(auto-fit, minmax(180px, 1fr))",
+                    "gridTemplateColumns": f"repeat({columns}, minmax(0, 1fr))",
                     "gap": "0.75rem",
                 },
             ),
@@ -253,13 +253,15 @@ def _performance_overview_tiles(
     recall = tp / (tp + fn) if (tp + fn) else np.nan
     negative_precision = tn / (tn + fn) if (tn + fn) else np.nan
     negative_recall = tn / (tn + fp) if (tn + fp) else np.nan
-    tpr_val = recall
     fpr_val = fp / neg if neg else np.nan
-    tnr_val = negative_recall
     fnr_val = fn / pos if pos else np.nan
 
-    count_tiles = [
+    count_summary_tiles = [
         _metric_tile("Total number of items", _format_count_value(total)),
+        _metric_tile("Number of actual positives", _format_count_value(pos)),
+        _metric_tile("Number of actual negatives", _format_count_value(neg)),
+    ]
+    count_detail_tiles = [
         _metric_tile("Number of true positives", _format_count_value(tp)),
         _metric_tile("Number of false positives", _format_count_value(fp)),
         _metric_tile("Number of true negatives", _format_count_value(tn)),
@@ -275,17 +277,44 @@ def _performance_overview_tiles(
         _metric_tile("Negative Recall", _format_metric_value(negative_recall)),
     ]
     rate_tiles = [
-        _metric_tile("True positive Rate", _format_metric_value(tpr_val)),
         _metric_tile("False Positive Rate", _format_metric_value(fpr_val)),
-        _metric_tile("True negative Rate", _format_metric_value(tnr_val)),
         _metric_tile("False negative rate", _format_metric_value(fnr_val)),
     ]
 
     sections = [
-        _metric_section("Counts", count_tiles),
-        _metric_section("Positive-class metrics", positive_tiles),
-        _metric_section("Negative-class metrics", negative_tiles),
-        _metric_section("Rates", rate_tiles),
+        html.Div(
+            [
+                html.Div(
+                    "Counts",
+                    style={
+                        "fontSize": "1rem",
+                        "fontWeight": 700,
+                        "color": "#1b4965",
+                        "fontFamily": "Inter, 'Segoe UI', sans-serif",
+                    },
+                ),
+                html.Div(
+                    count_summary_tiles,
+                    style={
+                        "display": "grid",
+                        "gridTemplateColumns": "repeat(3, minmax(0, 1fr))",
+                        "gap": "0.75rem",
+                    },
+                ),
+                html.Div(
+                    count_detail_tiles,
+                    style={
+                        "display": "grid",
+                        "gridTemplateColumns": "repeat(4, minmax(0, 1fr))",
+                        "gap": "0.75rem",
+                    },
+                ),
+            ],
+            style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+        ),
+        _metric_section("Positive-class metrics", positive_tiles, 3),
+        _metric_section("Negative-class metrics", negative_tiles, 2),
+        _metric_section("Rates", rate_tiles, 2),
     ]
     return sections, None
 
