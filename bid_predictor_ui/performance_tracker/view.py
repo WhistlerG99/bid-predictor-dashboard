@@ -201,28 +201,14 @@ def _metric_tile(label: str, value: str) -> html.Div:
     )
 
 
-def _metric_section(title: str, tiles: List[html.Div], columns: int) -> html.Div:
+def _metric_row(tiles: List[html.Div], columns: int) -> html.Div:
     return html.Div(
-        [
-            html.Div(
-                title,
-                style={
-                    "fontSize": "1rem",
-                    "fontWeight": 700,
-                    "color": "#1b4965",
-                    "fontFamily": "Inter, 'Segoe UI', sans-serif",
-                },
-            ),
-            html.Div(
-                tiles,
-                style={
-                    "display": "grid",
-                    "gridTemplateColumns": f"repeat({columns}, minmax(0, 1fr))",
-                    "gap": "0.75rem",
-                },
-            ),
-        ],
-        style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+        tiles,
+        style={
+            "display": "grid",
+            "gridTemplateColumns": f"repeat({columns}, minmax(0, 1fr))",
+            "gap": "0.75rem",
+        },
     )
 
 
@@ -255,30 +241,60 @@ def _performance_overview_tiles(
     negative_recall = tn / (tn + fp) if (tn + fp) else np.nan
     fpr_val = fp / neg if neg else np.nan
     fnr_val = fn / pos if pos else np.nan
+    balanced_accuracy = (recall + negative_recall) / 2 if (pos and neg) else np.nan
+    prevalence = pos / total if total else np.nan
+    f_score = (
+        (2 * precision * recall) / (precision + recall)
+        if (precision + recall)
+        else np.nan
+    )
+    negative_f_score = (
+        (2 * negative_precision * negative_recall) / (negative_precision + negative_recall)
+        if (negative_precision + negative_recall)
+        else np.nan
+    )
+    fm_index = (
+        np.sqrt(precision * recall)
+        if np.isfinite(precision) and np.isfinite(recall)
+        else np.nan
+    )
+    negative_fm_index = (
+        np.sqrt(negative_precision * negative_recall)
+        if np.isfinite(negative_precision) and np.isfinite(negative_recall)
+        else np.nan
+    )
 
     count_summary_tiles = [
-        _metric_tile("Total number of items", _format_count_value(total)),
-        _metric_tile("Number of actual positives", _format_count_value(pos)),
-        _metric_tile("Number of actual negatives", _format_count_value(neg)),
+        _metric_tile("Total Number of Items", _format_count_value(total)),
+        _metric_tile("Number of Actual Positive", _format_count_value(pos)),
+        _metric_tile("Number of Actual Negatives", _format_count_value(neg)),
     ]
     count_detail_tiles = [
-        _metric_tile("Number of true positives", _format_count_value(tp)),
-        _metric_tile("Number of false positives", _format_count_value(fp)),
-        _metric_tile("Number of true negatives", _format_count_value(tn)),
-        _metric_tile("Number of false negatives", _format_count_value(fn)),
+        _metric_tile("Number of True Positive", _format_count_value(tp)),
+        _metric_tile("Number of False Positive", _format_count_value(fp)),
+        _metric_tile("Number of True Negatives", _format_count_value(tn)),
+        _metric_tile("Number of False Negatives", _format_count_value(fn)),
     ]
-    positive_tiles = [
+    metric_row_one = [
         _metric_tile("Accuracy", _format_metric_value(accuracy)),
+        _metric_tile("Balanced Accuracy", _format_metric_value(balanced_accuracy)),
+        _metric_tile("Prevalence", _format_metric_value(prevalence)),
+    ]
+    metric_row_two = [
+        _metric_tile("F-Score", _format_metric_value(f_score)),
+        _metric_tile("FM Index", _format_metric_value(fm_index)),
+        _metric_tile("Negative F-Score", _format_metric_value(negative_f_score)),
+        _metric_tile("Negative FM Index", _format_metric_value(negative_fm_index)),
+    ]
+    metric_row_three = [
         _metric_tile("Precision", _format_metric_value(precision)),
         _metric_tile("Recall", _format_metric_value(recall)),
+        _metric_tile("False Negative Rate", _format_metric_value(fnr_val)),
     ]
-    negative_tiles = [
+    metric_row_four = [
         _metric_tile("Negative Precision", _format_metric_value(negative_precision)),
         _metric_tile("Negative Recall", _format_metric_value(negative_recall)),
-    ]
-    rate_tiles = [
         _metric_tile("False Positive Rate", _format_metric_value(fpr_val)),
-        _metric_tile("False negative rate", _format_metric_value(fnr_val)),
     ]
 
     sections = [
@@ -293,28 +309,29 @@ def _performance_overview_tiles(
                         "fontFamily": "Inter, 'Segoe UI', sans-serif",
                     },
                 ),
-                html.Div(
-                    count_summary_tiles,
-                    style={
-                        "display": "grid",
-                        "gridTemplateColumns": "repeat(3, minmax(0, 1fr))",
-                        "gap": "0.75rem",
-                    },
-                ),
-                html.Div(
-                    count_detail_tiles,
-                    style={
-                        "display": "grid",
-                        "gridTemplateColumns": "repeat(4, minmax(0, 1fr))",
-                        "gap": "0.75rem",
-                    },
-                ),
+                _metric_row(count_summary_tiles, 3),
+                _metric_row(count_detail_tiles, 4),
             ],
             style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
         ),
-        _metric_section("Positive-class metrics", positive_tiles, 3),
-        _metric_section("Negative-class metrics", negative_tiles, 2),
-        _metric_section("Rates", rate_tiles, 2),
+        html.Div(
+            [
+                html.Div(
+                    "Metrics",
+                    style={
+                        "fontSize": "1rem",
+                        "fontWeight": 700,
+                        "color": "#1b4965",
+                        "fontFamily": "Inter, 'Segoe UI', sans-serif",
+                    },
+                ),
+                _metric_row(metric_row_one, 3),
+                _metric_row(metric_row_two, 4),
+                _metric_row(metric_row_three, 3),
+                _metric_row(metric_row_four, 3),
+            ],
+            style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+        ),
     ]
     return sections, None
 
