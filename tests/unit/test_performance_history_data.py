@@ -39,15 +39,17 @@ def test_compute_daily_performance_history_includes_overall_and_carrier_rows():
 def test_update_performance_history_refreshes_recent_dates(tmp_path):
     dataset = _build_sample_dataset()
     history_path = tmp_path / "history.parquet"
-    source_path = tmp_path / "source.parquet"
+    source_dir = tmp_path / "sources"
+    source_dir.mkdir()
 
     initial = history_data.compute_daily_performance_history(dataset.iloc[:1], threshold=0.5)
     initial.to_parquet(history_path, index=False)
-    dataset.to_parquet(source_path, index=False)
+    dataset.iloc[:2].to_csv(source_dir / "day1.csv", index=False)
+    dataset.iloc[2:].to_csv(source_dir / "day2.csv", index=False)
 
     updated = history_data.update_performance_history_from_source(
         str(history_path),
-        str(source_path),
+        str(source_dir),
         refresh_days=2,
         threshold=0.5,
     )

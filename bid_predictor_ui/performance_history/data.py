@@ -11,7 +11,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyarrow import fs as pyfs
 
-from ..data_sources import enrich_with_offer_status, load_dataset_from_source
+from ..data_sources import _list_remote_files, enrich_with_offer_status
 
 DEFAULT_THRESHOLD = 0.5
 HISTORY_DATE_COLUMN = "history_date"
@@ -77,7 +77,7 @@ def _safe_ratio(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
     return ratio.where(np.isfinite(ratio))
 
 
-def _summarize_groups(
+def _summarize_counts(
     working: pd.DataFrame, group_keys: Iterable[str]
 ) -> pd.DataFrame:
     grouped = working.groupby(list(group_keys), dropna=False)
@@ -90,7 +90,10 @@ def _summarize_groups(
         fp=("fp", "sum"),
         fn=("fn", "sum"),
     )
+    return summary.reset_index()
 
+
+def _apply_metrics(summary: pd.DataFrame) -> pd.DataFrame:
     summary["actual_neg"] = summary["total"] - summary["actual_pos"]
     summary["predicted_neg"] = summary["total"] - summary["predicted_pos"]
 
@@ -122,7 +125,6 @@ def _summarize_groups(
         summary["negative_precision"] * summary["negative_recall"]
     )
 
-    summary = summary.reset_index()
     count_columns = [
         "total",
         "actual_pos",
@@ -138,13 +140,10 @@ def _summarize_groups(
     return summary
 
 
-def compute_daily_performance_history(
-    dataset: pd.DataFrame, threshold: float = DEFAULT_THRESHOLD
+def _compute_daily_counts(
+    dataset: pd.DataFrame, threshold: float
 ) -> pd.DataFrame:
-    if dataset.empty:
-        return pd.DataFrame()
-
-    if "accept_prob_timestamp" not in dataset.columns:
+    if dataset.empty or "accept_prob_timestamp" not in dataset.columns:
         return pd.DataFrame()
 
     working = dataset.copy()
@@ -171,21 +170,42 @@ def compute_daily_performance_history(
     working["fp"] = ~working["actual_positive"] & working["predicted_positive"]
     working["fn"] = working["actual_positive"] & ~working["predicted_positive"]
 
-    carrier_summary = _summarize_groups(working, [HISTORY_DATE_COLUMN, "carrier_code"])
+    return _summarize_counts(working, [HISTORY_DATE_COLUMN, "carrier_code"])
 
-    if "carrier_code" in dataset.columns:
-        overall = working.copy()
+
+def _history_from_counts(counts: pd.DataFrame, threshold: float) -> pd.DataFrame:
+    if counts.empty:
+        return pd.DataFrame()
+
+    counts = counts.groupby([HISTORY_DATE_COLUMN, "carrier_code"], dropna=False).sum()
+    counts = counts.reset_index()
+
+    if ALL_CARRIER_VALUE not in counts["carrier_code"].astype(str).unique():
+        overall = counts.copy()
         overall["carrier_code"] = ALL_CARRIER_VALUE
-        overall_summary = _summarize_groups(overall, [HISTORY_DATE_COLUMN, "carrier_code"])
-        summary = pd.concat([carrier_summary, overall_summary], ignore_index=True)
-    else:
-        summary = carrier_summary
+        overall = overall.groupby([HISTORY_DATE_COLUMN, "carrier_code"], dropna=False).sum()
+        overall = overall.reset_index()
+        counts = pd.concat([counts, overall], ignore_index=True)
 
+    summary = _apply_metrics(counts)
     summary["threshold"] = float(threshold)
     summary = summary.sort_values([HISTORY_DATE_COLUMN, "carrier_code"]).reset_index(
         drop=True
     )
     return summary
+
+
+def compute_daily_performance_history(
+    dataset: pd.DataFrame, threshold: float = DEFAULT_THRESHOLD
+) -> pd.DataFrame:
+    if dataset.empty:
+        return pd.DataFrame()
+
+    if "accept_prob_timestamp" not in dataset.columns:
+        return pd.DataFrame()
+
+    counts = _compute_daily_counts(dataset, threshold)
+    return _history_from_counts(counts, threshold)
 
 
 def load_performance_history(history_uri: str) -> pd.DataFrame:
@@ -210,6 +230,36 @@ def _extract_hour_timestamps(dataset: pd.DataFrame) -> list[pd.Timestamp]:
     ]
 
 
+def _iter_source_files(source_uri: str) -> list[str]:
+    if _is_s3_uri(source_uri):
+        filesystem = pyfs.S3FileSystem()
+        return [f"s3://{path}" for path in _list_remote_files(filesystem, source_uri)]
+
+    resolved = Path(source_uri).expanduser()
+    if resolved.is_dir():
+        parquet_files = sorted(resolved.glob("*.parquet")) + sorted(
+            resolved.glob("*.pq")
+        )
+        csv_files = sorted(resolved.glob("*.csv"))
+        return [str(path) for path in parquet_files + csv_files]
+
+    return [str(resolved)]
+
+
+def _read_source_file(path: str) -> pd.DataFrame:
+    if _is_s3_uri(path):
+        filesystem = pyfs.S3FileSystem()
+        with filesystem.open_input_file(_split_s3_uri(path)) as handle:
+            if path.lower().endswith((".parquet", ".pq")):
+                return pd.read_parquet(handle)
+            return pd.read_csv(handle)
+
+    resolved = Path(path).expanduser()
+    if resolved.suffix.lower() in {".parquet", ".pq"}:
+        return pd.read_parquet(resolved)
+    return pd.read_csv(resolved)
+
+
 def update_performance_history_from_source(
     history_uri: str,
     source_uri: str,
@@ -226,26 +276,46 @@ def update_performance_history_from_source(
 
     if history_exists:
         existing = load_performance_history(history_uri)
-        hours = refresh_days * 24
-        dataset = load_dataset_from_source(
-            {"source": "path", "path": source_uri, "hours": hours},
-            reload=True,
+        latest_date = existing[HISTORY_DATE_COLUMN].max()
+        refresh_start = (
+            latest_date - pd.Timedelta(days=refresh_days - 1)
+            if pd.notna(latest_date)
+            else None
         )
     else:
         existing = pd.DataFrame()
-        dataset = load_dataset_from_source(
-            {"source": "path", "path": source_uri, "hours": None},
-            reload=True,
-        )
+        refresh_start = None
 
-    hour_timestamps = _extract_hour_timestamps(dataset)
-    dataset = enrich_with_offer_status(
-        dataset,
-        cache_client=cache_client,
-        cache_prefix=source_uri,
-        hour_timestamps=hour_timestamps,
-    )
-    new_history = compute_daily_performance_history(dataset, threshold=threshold)
+    counts_frames: list[pd.DataFrame] = []
+    for file_path in _iter_source_files(source_uri):
+        try:
+            frame = _read_source_file(file_path)
+        except Exception:
+            continue
+
+        if refresh_start is not None and "accept_prob_timestamp" in frame.columns:
+            timestamps = pd.to_datetime(frame["accept_prob_timestamp"], errors="coerce")
+            frame = frame.loc[timestamps.dt.normalize() >= refresh_start].copy()
+
+        if frame.empty:
+            continue
+
+        hour_timestamps = _extract_hour_timestamps(frame)
+        frame = enrich_with_offer_status(
+            frame,
+            cache_client=cache_client,
+            cache_prefix=source_uri,
+            hour_timestamps=hour_timestamps,
+        )
+        counts = _compute_daily_counts(frame, threshold)
+        if not counts.empty:
+            counts_frames.append(counts)
+
+    if not counts_frames:
+        return existing if not existing.empty else None
+
+    combined_counts = pd.concat(counts_frames, ignore_index=True)
+    new_history = _history_from_counts(combined_counts, threshold)
 
     if new_history.empty:
         return existing if not existing.empty else None
@@ -254,8 +324,12 @@ def update_performance_history_from_source(
         _write_parquet(history_uri, new_history)
         return new_history
 
-    refresh_start = new_history[HISTORY_DATE_COLUMN].min()
-    if pd.isna(refresh_start):
+    refresh_start = (
+        new_history[HISTORY_DATE_COLUMN].min()
+        if refresh_start is None
+        else refresh_start
+    )
+    if refresh_start is None or pd.isna(refresh_start):
         return existing
 
     retained = existing[existing[HISTORY_DATE_COLUMN] < refresh_start]
