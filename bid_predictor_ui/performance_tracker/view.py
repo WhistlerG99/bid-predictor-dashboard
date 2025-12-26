@@ -509,11 +509,21 @@ def _roc_pr_curves(
         )
     )
     roc_fig.update_layout(
-        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        margin={"l": 32, "r": 16, "t": 10, "b": 32},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
     )
-    roc_fig.update_xaxes(title_text="False positive rate", rangemode="tozero")
-    roc_fig.update_yaxes(title_text="True positive rate", rangemode="tozero")
+    roc_fig.update_xaxes(
+        title_text="False positive rate",
+        title_standoff=6,
+        tickfont={"size": 10},
+        rangemode="tozero",
+    )
+    roc_fig.update_yaxes(
+        title_text="True positive rate",
+        title_standoff=6,
+        tickfont={"size": 10},
+        rangemode="tozero",
+    )
 
     pr_fig = go.Figure()
     pr_fig.add_trace(
@@ -535,11 +545,21 @@ def _roc_pr_curves(
         )
     )
     pr_fig.update_layout(
-        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        margin={"l": 32, "r": 16, "t": 10, "b": 32},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
     )
-    pr_fig.update_xaxes(title_text="Recall", rangemode="tozero")
-    pr_fig.update_yaxes(title_text="Precision", rangemode="tozero")
+    pr_fig.update_xaxes(
+        title_text="Recall",
+        title_standoff=6,
+        tickfont={"size": 10},
+        rangemode="tozero",
+    )
+    pr_fig.update_yaxes(
+        title_text="Precision",
+        title_standoff=6,
+        tickfont={"size": 10},
+        rangemode="tozero",
+    )
 
     neg_roc_fig = go.Figure()
     neg_roc_fig.add_trace(
@@ -561,11 +581,21 @@ def _roc_pr_curves(
         )
     )
     neg_roc_fig.update_layout(
-        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        margin={"l": 32, "r": 16, "t": 10, "b": 32},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
     )
-    neg_roc_fig.update_xaxes(title_text="False negative rate", rangemode="tozero")
-    neg_roc_fig.update_yaxes(title_text="True negative rate", rangemode="tozero")
+    neg_roc_fig.update_xaxes(
+        title_text="False negative rate",
+        title_standoff=6,
+        tickfont={"size": 10},
+        rangemode="tozero",
+    )
+    neg_roc_fig.update_yaxes(
+        title_text="True negative rate",
+        title_standoff=6,
+        tickfont={"size": 10},
+        rangemode="tozero",
+    )
 
     neg_pr_fig = go.Figure()
     neg_pr_fig.add_trace(
@@ -587,11 +617,21 @@ def _roc_pr_curves(
         )
     )
     neg_pr_fig.update_layout(
-        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        margin={"l": 32, "r": 16, "t": 10, "b": 32},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
     )
-    neg_pr_fig.update_xaxes(title_text="Negative recall", rangemode="tozero")
-    neg_pr_fig.update_yaxes(title_text="Negative precision", rangemode="tozero")
+    neg_pr_fig.update_xaxes(
+        title_text="Negative recall",
+        title_standoff=6,
+        tickfont={"size": 10},
+        rangemode="tozero",
+    )
+    neg_pr_fig.update_yaxes(
+        title_text="Negative precision",
+        title_standoff=6,
+        tickfont={"size": 10},
+        rangemode="tozero",
+    )
 
     return roc_fig, pr_fig, neg_roc_fig, neg_pr_fig
 

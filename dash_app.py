@@ -504,7 +504,11 @@ def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> N
 
 
 def create_app() -> Dash:
-    app = Dash(__name__, suppress_callback_exceptions=True)
+    app = Dash(
+        __name__,
+        suppress_callback_exceptions=True,
+        meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
+    )
     model_name_options = build_model_name_options()
     app.layout = html.Div(
         [
@@ -519,6 +523,7 @@ def create_app() -> Dash:
                         style={"margin": "0", "color": "#16324f"},
                     ),
                 ],
+                className="app-hero",
                 style={
                     "background": "linear-gradient(90deg, #e0fbfc 0%, #c2dfe3 100%)",
                     "padding": "1.5rem",
@@ -594,6 +599,7 @@ def create_app() -> Dash:
                                         ),
                                     ),
                                 ],
+                                className="control-card",
                                 style={
                                     "flex": "1",
                                     "padding": "1rem",
@@ -655,6 +661,7 @@ def create_app() -> Dash:
                                         ),
                                     ),
                                 ],
+                                className="control-card",
                                 style={
                                     "flex": "1",
                                     "padding": "1rem",
@@ -665,6 +672,7 @@ def create_app() -> Dash:
                             ),
                         ],
                         id="standard-controls",
+                        className="controls-grid",
                         style={
                             "display": "flex",
                             "flexWrap": "wrap",
@@ -734,6 +742,7 @@ def create_app() -> Dash:
                                 style={"width": "100%"},
                             ),                                
                         ],
+                        className="control-card",
                         style={
                             "display": "flex",
                             "flexDirection": "column",
@@ -787,6 +796,7 @@ def create_app() -> Dash:
                 children=build_snapshot_tab().children,
             ),
         ],
+        className="app-shell",
         style={
             "fontFamily": "'Segoe UI', sans-serif",
             "backgroundColor": "#fafafa",

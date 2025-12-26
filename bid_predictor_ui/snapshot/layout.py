@@ -163,6 +163,7 @@ def _build_snapshot_filter_card() -> html.Div:
                                 },
                             ),
                         ],
+                        className="two-column-inputs",
                         style={
                             "display": "flex",
                             "justifyContent": "space-between",
@@ -186,6 +187,7 @@ def _build_snapshot_filter_card() -> html.Div:
                 style={"color": "#16324f"},
             ),
         ],
+        className="filter-card",
         style={
             "flex": "0 0 300px",
             "maxWidth": "320px",
@@ -267,6 +269,7 @@ def _build_snapshot_graph_card() -> html.Div:
             ),
             dcc.Graph(
                 id="prediction-graph",
+                className="graph-tall",
                 style={"height": "800px", "marginTop": "1rem"},
             ),
         ],
@@ -409,19 +412,21 @@ def build_snapshot_tab() -> dcc.Tab:
             html.Div(
                 [
                     _build_snapshot_filter_card(),
-                    html.Div(
-                        [
-                            _build_snapshot_graph_card(),
-                            _build_snapshot_table_card(),
-                        ],
-                        style={"flex": "1", "minWidth": "0"},
-                    ),
+            html.Div(
+                [
+                    _build_snapshot_graph_card(),
+                    _build_snapshot_table_card(),
                 ],
-                style={
-                    "display": "flex",
-                    "gap": "1.5rem",
-                    "alignItems": "flex-start",
-                    "flexWrap": "wrap",
+                className="tab-main",
+                style={"flex": "1", "minWidth": "0"},
+            ),
+        ],
+        className="tab-flex",
+        style={
+            "display": "flex",
+            "gap": "1.5rem",
+            "alignItems": "flex-start",
+            "flexWrap": "wrap",
                 },
             )
         ],

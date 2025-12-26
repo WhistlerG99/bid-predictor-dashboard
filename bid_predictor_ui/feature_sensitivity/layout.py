@@ -137,6 +137,7 @@ def _build_control_card() -> html.Div:
                         style={"display": "none"},
                     ),
                 ],
+                className="two-column-inputs",
                 style={
                     "display": "flex",
                     "gap": "0.75rem",
@@ -212,6 +213,7 @@ def _build_control_card() -> html.Div:
                 style={"marginTop": "0.75rem"},
             ),
         ],
+        className="filter-card",
         style={
             "flex": "0 0 320px",
             "maxWidth": "340px",
@@ -233,7 +235,7 @@ def _build_graph_card() -> html.Div:
     """
     return html.Div(
         [
-            dcc.Graph(id="scenario-graph", style={"height": "620px"}),
+            dcc.Graph(id="scenario-graph", className="graph-tall", style={"height": "620px"}),
             html.Div(
                 id="scenario-warning",
                 className="status-message",
@@ -385,26 +387,28 @@ def build_feature_sensitivity_tab() -> dcc.Tab:
                 [
                     _build_control_card(),
                     html.Div(
-                        [
-                            _build_graph_card(),
-                            _build_table_card(),
-                        ],
-                        style={
-                            "flex": "1",
-                            "minWidth": "0",
-                            "display": "flex",
-                            "flexDirection": "column",
-                            "gap": "1.5rem",
-                        },
-                    ),
+                [
+                    _build_graph_card(),
+                    _build_table_card(),
                 ],
+                className="tab-main",
                 style={
+                    "flex": "1",
+                    "minWidth": "0",
                     "display": "flex",
+                    "flexDirection": "column",
                     "gap": "1.5rem",
-                    "alignItems": "flex-start",
-                    "flexWrap": "wrap",
                 },
-            )
+            ),
+        ],
+        className="tab-flex",
+        style={
+            "display": "flex",
+            "gap": "1.5rem",
+            "alignItems": "flex-start",
+            "flexWrap": "wrap",
+        },
+    )
         ],
     )
 
