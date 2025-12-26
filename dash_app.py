@@ -729,6 +729,8 @@ def create_app() -> Dash:
         if active_tab in {"acceptance", "performance"}:
             standard_style["display"] = "none"
             acceptance_style["display"] = "flex"
+        if active_tab == "history":
+            standard_style["display"] = "none"
         return standard_style, acceptance_style
 
 
