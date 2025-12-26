@@ -726,7 +726,7 @@ def create_app() -> Dash:
             "gap": "1.5rem",
             "marginBottom": "1.5rem",
         }
-        if active_tab in {"acceptance", "performance", "history"}:
+        if active_tab in {"acceptance", "performance"}:
             standard_style["display"] = "none"
             acceptance_style["display"] = "flex"
         return standard_style, acceptance_style

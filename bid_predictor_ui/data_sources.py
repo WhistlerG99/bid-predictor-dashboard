@@ -416,6 +416,12 @@ def enrich_with_offer_status(
         return dataset
 
     working = dataset.copy()
+    if hour_timestamps is None and "accept_prob_timestamp" in working.columns:
+        timestamps = pd.to_datetime(working["accept_prob_timestamp"], errors="coerce")
+        hour_timestamps = [
+            ts.replace(minute=0, second=0, microsecond=0)
+            for ts in timestamps.dropna().unique()
+        ]
     hour_timestamps = hour_timestamps or []
     offer_statuses = get_offer_statuses_from_cache(
         cache_client, cache_prefix, hour_timestamps
