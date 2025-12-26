@@ -11,6 +11,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyarrow import fs as pyfs
 
+from ..data_sources import enrich_with_offer_status, load_dataset_from_source
+
 DEFAULT_THRESHOLD = 0.5
 HISTORY_DATE_COLUMN = "history_date"
 ALL_CARRIER_VALUE = "ALL"
@@ -198,41 +200,68 @@ def load_performance_history(history_uri: str) -> pd.DataFrame:
     return history
 
 
-def update_performance_history_file(
-    dataset: pd.DataFrame,
+def _extract_hour_timestamps(dataset: pd.DataFrame) -> list[pd.Timestamp]:
+    if "accept_prob_timestamp" not in dataset.columns:
+        return []
+    timestamps = pd.to_datetime(dataset["accept_prob_timestamp"], errors="coerce")
+    return [
+        ts.replace(minute=0, second=0, microsecond=0)
+        for ts in timestamps.dropna().unique()
+    ]
+
+
+def update_performance_history_from_source(
     history_uri: str,
+    source_uri: str,
+    *,
+    refresh_days: int,
     threshold: float = DEFAULT_THRESHOLD,
+    cache_client: Optional[object] = None,
 ) -> Optional[pd.DataFrame]:
-    new_history = compute_daily_performance_history(dataset, threshold=threshold)
-    if new_history.empty:
+    if not source_uri:
         return None
 
-    if not _file_exists(history_uri):
+    refresh_days = max(int(refresh_days), 1)
+    history_exists = _file_exists(history_uri)
+
+    if history_exists:
+        existing = load_performance_history(history_uri)
+        hours = refresh_days * 24
+        dataset = load_dataset_from_source(
+            {"source": "path", "path": source_uri, "hours": hours},
+            reload=True,
+        )
+    else:
+        existing = pd.DataFrame()
+        dataset = load_dataset_from_source(
+            {"source": "path", "path": source_uri, "hours": None},
+            reload=True,
+        )
+
+    hour_timestamps = _extract_hour_timestamps(dataset)
+    dataset = enrich_with_offer_status(
+        dataset,
+        cache_client=cache_client,
+        cache_prefix=source_uri,
+        hour_timestamps=hour_timestamps,
+    )
+    new_history = compute_daily_performance_history(dataset, threshold=threshold)
+
+    if new_history.empty:
+        return existing if not existing.empty else None
+
+    if not history_exists or existing.empty or HISTORY_DATE_COLUMN not in existing.columns:
         _write_parquet(history_uri, new_history)
         return new_history
 
-    existing = load_performance_history(history_uri)
-    if existing.empty:
-        _write_parquet(history_uri, new_history)
-        return new_history
-
-    if HISTORY_DATE_COLUMN not in existing.columns:
-        _write_parquet(history_uri, new_history)
-        return new_history
-
-    latest_date = pd.to_datetime(existing[HISTORY_DATE_COLUMN], errors="coerce").max()
-    if pd.isna(latest_date):
-        _write_parquet(history_uri, new_history)
-        return new_history
-
-    append_rows = new_history[new_history[HISTORY_DATE_COLUMN] > latest_date]
-    if append_rows.empty:
+    refresh_start = new_history[HISTORY_DATE_COLUMN].min()
+    if pd.isna(refresh_start):
         return existing
 
-    combined = pd.concat([existing, append_rows], ignore_index=True)
+    retained = existing[existing[HISTORY_DATE_COLUMN] < refresh_start]
+    combined = pd.concat([retained, new_history], ignore_index=True)
     combined = combined.sort_values([HISTORY_DATE_COLUMN, "carrier_code"]).reset_index(
         drop=True
     )
     _write_parquet(history_uri, combined)
     return combined
-
