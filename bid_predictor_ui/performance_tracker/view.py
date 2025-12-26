@@ -331,7 +331,7 @@ def _threshold_metric_chart(
             go.Scatter(
                 x=metrics_df["threshold"],
                 y=metrics_df[column],
-                mode="lines+markers",
+                mode="lines",
                 name=label,
             )
         )
