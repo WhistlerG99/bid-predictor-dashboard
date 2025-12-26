@@ -14,6 +14,22 @@ from ..acceptance_explorer import load_acceptance_dataset
 
 DEFAULT_THRESHOLD_POINTS = 200
 
+METRIC_LABELS = {
+    "Accuracy": "accuracy",
+    "Balanced Accuracy": "balanced_accuracy",
+    "Prevalence": "prevalence",
+    "F-Score": "f_score",
+    "FM Index": "fm_index",
+    "Negative F-Score": "negative_f_score",
+    "Negative FM Index": "negative_fm_index",
+    "Precision": "precision",
+    "Recall": "recall",
+    "False Negative Rate": "false_negative_rate",
+    "Negative Precision": "negative_precision",
+    "Negative Recall": "negative_recall",
+    "False Positive Rate": "false_positive_rate",
+}
+
 
 def _select_first_series(dataset: pd.DataFrame, columns: Iterable[str]) -> Optional[pd.Series]:
     for column in columns:
@@ -201,29 +217,132 @@ def _metric_tile(label: str, value: str) -> html.Div:
     )
 
 
-def _metric_section(title: str, tiles: List[html.Div], columns: int) -> html.Div:
+def _metric_row(tiles: List[html.Div], columns: int) -> html.Div:
     return html.Div(
-        [
-            html.Div(
-                title,
-                style={
-                    "fontSize": "1rem",
-                    "fontWeight": 700,
-                    "color": "#1b4965",
-                    "fontFamily": "Inter, 'Segoe UI', sans-serif",
-                },
-            ),
-            html.Div(
-                tiles,
-                style={
-                    "display": "grid",
-                    "gridTemplateColumns": f"repeat({columns}, minmax(0, 1fr))",
-                    "gap": "0.75rem",
-                },
-            ),
-        ],
-        style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+        tiles,
+        style={
+            "display": "grid",
+            "gridTemplateColumns": f"repeat({columns}, minmax(0, 1fr))",
+            "gap": "0.75rem",
+        },
     )
+
+
+def _metrics_by_threshold(
+    df: pd.DataFrame,
+    carrier: Optional[str],
+    hours_range: Optional[Iterable[float]],
+    threshold_points: int,
+) -> Tuple[pd.DataFrame, Optional[str]]:
+    working = _filter_acceptance_rows(df, carrier, hours_range)
+    working["accept_prob"] = pd.to_numeric(working.get("accept_prob"), errors="coerce")
+    working = working.dropna(subset=["accept_prob", "offer_status"])
+    if working.empty:
+        return pd.DataFrame(), "No rows matched the selected filters."
+
+    actual_positive = working["offer_status"] == "TICKETED"
+    scores = working["accept_prob"].to_numpy(dtype=float)
+    labels = actual_positive.to_numpy(dtype=bool)
+
+    thresholds = _generate_thresholds(scores, threshold_points)
+    if thresholds.size == 0:
+        return pd.DataFrame(), "No valid thresholds available to plot metrics."
+
+    records: List[Dict[str, float]] = []
+    for threshold in thresholds:
+        preds = scores >= threshold
+        tp = int(np.sum(preds & labels))
+        tn = int(np.sum(~preds & ~labels))
+        fp = int(np.sum(preds & ~labels))
+        fn = int(np.sum(~preds & labels))
+
+        total = tp + tn + fp + fn
+        pos = tp + fn
+        neg = tn + fp
+
+        accuracy = (tp + tn) / total if total else np.nan
+        precision = tp / (tp + fp) if (tp + fp) else np.nan
+        recall = tp / (tp + fn) if (tp + fn) else np.nan
+        negative_precision = tn / (tn + fn) if (tn + fn) else np.nan
+        negative_recall = tn / (tn + fp) if (tn + fp) else np.nan
+        false_positive_rate = fp / neg if neg else np.nan
+        false_negative_rate = fn / pos if pos else np.nan
+        balanced_accuracy = (recall + negative_recall) / 2 if (pos and neg) else np.nan
+        prevalence = pos / total if total else np.nan
+        f_score = (
+            (2 * precision * recall) / (precision + recall)
+            if (precision + recall)
+            else np.nan
+        )
+        negative_f_score = (
+            (2 * negative_precision * negative_recall)
+            / (negative_precision + negative_recall)
+            if (negative_precision + negative_recall)
+            else np.nan
+        )
+        fm_index = (
+            np.sqrt(precision * recall)
+            if np.isfinite(precision) and np.isfinite(recall)
+            else np.nan
+        )
+        negative_fm_index = (
+            np.sqrt(negative_precision * negative_recall)
+            if np.isfinite(negative_precision) and np.isfinite(negative_recall)
+            else np.nan
+        )
+
+        records.append(
+            {
+                "threshold": float(threshold),
+                "accuracy": accuracy,
+                "balanced_accuracy": balanced_accuracy,
+                "prevalence": prevalence,
+                "f_score": f_score,
+                "fm_index": fm_index,
+                "negative_f_score": negative_f_score,
+                "negative_fm_index": negative_fm_index,
+                "precision": precision,
+                "recall": recall,
+                "false_negative_rate": false_negative_rate,
+                "negative_precision": negative_precision,
+                "negative_recall": negative_recall,
+                "false_positive_rate": false_positive_rate,
+            }
+        )
+
+    metrics_df = pd.DataFrame.from_records(records)
+    return metrics_df.sort_values("threshold"), None
+
+
+def _threshold_metric_chart(
+    metrics_df: pd.DataFrame, selected_metrics: Iterable[str]
+) -> go.Figure:
+    if metrics_df.empty:
+        return _empty_figure("No metrics available to plot.")
+
+    metric_labels = [label for label in selected_metrics if label in METRIC_LABELS]
+    if not metric_labels:
+        return _empty_figure("Select at least one metric to plot.")
+
+    fig = go.Figure()
+    for label in metric_labels:
+        column = METRIC_LABELS[label]
+        fig.add_trace(
+            go.Scatter(
+                x=metrics_df["threshold"],
+                y=metrics_df[column],
+                mode="lines",
+                name=label,
+            )
+        )
+
+    fig.update_layout(
+        margin={"l": 40, "r": 20, "t": 10, "b": 40},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
+    )
+    fig.update_xaxes(title_text="Threshold (%)", rangemode="tozero")
+    fig.update_yaxes(title_text="Metric value", rangemode="tozero")
+    return fig
 
 
 def _performance_overview_tiles(
@@ -255,30 +374,60 @@ def _performance_overview_tiles(
     negative_recall = tn / (tn + fp) if (tn + fp) else np.nan
     fpr_val = fp / neg if neg else np.nan
     fnr_val = fn / pos if pos else np.nan
+    balanced_accuracy = (recall + negative_recall) / 2 if (pos and neg) else np.nan
+    prevalence = pos / total if total else np.nan
+    f_score = (
+        (2 * precision * recall) / (precision + recall)
+        if (precision + recall)
+        else np.nan
+    )
+    negative_f_score = (
+        (2 * negative_precision * negative_recall) / (negative_precision + negative_recall)
+        if (negative_precision + negative_recall)
+        else np.nan
+    )
+    fm_index = (
+        np.sqrt(precision * recall)
+        if np.isfinite(precision) and np.isfinite(recall)
+        else np.nan
+    )
+    negative_fm_index = (
+        np.sqrt(negative_precision * negative_recall)
+        if np.isfinite(negative_precision) and np.isfinite(negative_recall)
+        else np.nan
+    )
 
     count_summary_tiles = [
-        _metric_tile("Total number of items", _format_count_value(total)),
-        _metric_tile("Number of actual positives", _format_count_value(pos)),
-        _metric_tile("Number of actual negatives", _format_count_value(neg)),
+        _metric_tile("Total Number of Items", _format_count_value(total)),
+        _metric_tile("Number of Actual Positive", _format_count_value(pos)),
+        _metric_tile("Number of Actual Negatives", _format_count_value(neg)),
     ]
     count_detail_tiles = [
-        _metric_tile("Number of true positives", _format_count_value(tp)),
-        _metric_tile("Number of false positives", _format_count_value(fp)),
-        _metric_tile("Number of true negatives", _format_count_value(tn)),
-        _metric_tile("Number of false negatives", _format_count_value(fn)),
+        _metric_tile("Number of True Positive", _format_count_value(tp)),
+        _metric_tile("Number of False Positive", _format_count_value(fp)),
+        _metric_tile("Number of True Negatives", _format_count_value(tn)),
+        _metric_tile("Number of False Negatives", _format_count_value(fn)),
     ]
-    positive_tiles = [
+    metric_row_one = [
         _metric_tile("Accuracy", _format_metric_value(accuracy)),
+        _metric_tile("Balanced Accuracy", _format_metric_value(balanced_accuracy)),
+        _metric_tile("Prevalence", _format_metric_value(prevalence)),
+    ]
+    metric_row_two = [
+        _metric_tile("F-Score", _format_metric_value(f_score)),
+        _metric_tile("FM Index", _format_metric_value(fm_index)),
+        _metric_tile("Negative F-Score", _format_metric_value(negative_f_score)),
+        _metric_tile("Negative FM Index", _format_metric_value(negative_fm_index)),
+    ]
+    metric_row_three = [
         _metric_tile("Precision", _format_metric_value(precision)),
         _metric_tile("Recall", _format_metric_value(recall)),
+        _metric_tile("False Negative Rate", _format_metric_value(fnr_val)),
     ]
-    negative_tiles = [
+    metric_row_four = [
         _metric_tile("Negative Precision", _format_metric_value(negative_precision)),
         _metric_tile("Negative Recall", _format_metric_value(negative_recall)),
-    ]
-    rate_tiles = [
         _metric_tile("False Positive Rate", _format_metric_value(fpr_val)),
-        _metric_tile("False negative rate", _format_metric_value(fnr_val)),
     ]
 
     sections = [
@@ -293,28 +442,29 @@ def _performance_overview_tiles(
                         "fontFamily": "Inter, 'Segoe UI', sans-serif",
                     },
                 ),
-                html.Div(
-                    count_summary_tiles,
-                    style={
-                        "display": "grid",
-                        "gridTemplateColumns": "repeat(3, minmax(0, 1fr))",
-                        "gap": "0.75rem",
-                    },
-                ),
-                html.Div(
-                    count_detail_tiles,
-                    style={
-                        "display": "grid",
-                        "gridTemplateColumns": "repeat(4, minmax(0, 1fr))",
-                        "gap": "0.75rem",
-                    },
-                ),
+                _metric_row(count_summary_tiles, 3),
+                _metric_row(count_detail_tiles, 4),
             ],
             style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
         ),
-        _metric_section("Positive-class metrics", positive_tiles, 3),
-        _metric_section("Negative-class metrics", negative_tiles, 2),
-        _metric_section("Rates", rate_tiles, 2),
+        html.Div(
+            [
+                html.Div(
+                    "Metrics",
+                    style={
+                        "fontSize": "1rem",
+                        "fontWeight": 700,
+                        "color": "#1b4965",
+                        "fontFamily": "Inter, 'Segoe UI', sans-serif",
+                    },
+                ),
+                _metric_row(metric_row_one, 3),
+                _metric_row(metric_row_two, 4),
+                _metric_row(metric_row_three, 3),
+                _metric_row(metric_row_four, 3),
+            ],
+            style={"display": "flex", "flexDirection": "column", "gap": "0.5rem"},
+        ),
     ]
     return sections, None
 
@@ -816,6 +966,83 @@ def register_performance_callbacks(app: Dash) -> None:
             return _compute_hours_range(pd.DataFrame())
 
         return _compute_hours_range(dataset)
+
+    @callback(
+        Output("threshold-metrics-carrier", "options"),
+        Output("threshold-metrics-carrier", "value"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def populate_threshold_metrics_carriers(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[List[Dict[str, str]], str]:
+        if not dataset_config:
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return ([{"label": "All", "value": "ALL"}], "ALL")
+
+        options = _build_carrier_options(dataset)
+        return (options, "ALL")
+
+    @callback(
+        Output("threshold-metrics-hours-range", "min"),
+        Output("threshold-metrics-hours-range", "max"),
+        Output("threshold-metrics-hours-range", "value"),
+        Output("threshold-metrics-hours-range", "marks"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def configure_threshold_metrics_hours_range(
+        dataset_config: Optional[Mapping[str, object]]
+    ) -> Tuple[float, float, List[float], Dict[int, str]]:
+        if not dataset_config:
+            return _compute_hours_range(pd.DataFrame())
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:  # pragma: no cover - user feedback path
+            return _compute_hours_range(pd.DataFrame())
+
+        return _compute_hours_range(dataset)
+
+    @callback(
+        Output("threshold-metrics-status", "children"),
+        Output("threshold-metrics-graph", "figure"),
+        Input("acceptance-dataset-path-store", "data"),
+        Input("threshold-metrics-carrier", "value"),
+        Input("threshold-metrics-hours-range", "value"),
+        Input("threshold-metrics-selection", "value"),
+        Input("threshold-metrics-threshold-points", "value"),
+    )
+    def update_threshold_metrics_chart(
+        dataset_config: Optional[Mapping[str, object]],
+        carrier: Optional[str],
+        hours_range: Optional[Iterable[float]],
+        selected_metrics: Optional[Iterable[str]],
+        threshold_points: Optional[float],
+    ) -> Tuple[str, go.Figure]:
+        if not dataset_config:
+            message = "Load a dataset in the acceptance explorer controls to view metrics."
+            return message, _empty_figure(message)
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception as exc:  # pragma: no cover - user feedback
+            message = f"Failed to load dataset: {exc}"
+            return message, _empty_figure(message)
+
+        metrics_df, error = _metrics_by_threshold(
+            dataset,
+            carrier,
+            hours_range,
+            int(threshold_points or DEFAULT_THRESHOLD_POINTS),
+        )
+        if error:
+            return error, _empty_figure(error)
+
+        fig = _threshold_metric_chart(metrics_df, selected_metrics or [])
+        return "", fig
 
     @callback(
         Output("performance-overview-status", "children"),

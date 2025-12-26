@@ -338,6 +338,131 @@ def _build_performance_overview_section() -> html.Div:
     )
 
 
+def _build_threshold_metrics_section() -> html.Div:
+    """Create the metrics vs threshold controls and chart."""
+
+    control_panel = html.Div(
+        [
+            html.H4(
+                "Filter settings", style={"margin": "0 0 0.75rem 0", "color": "#1b4965"}
+            ),
+            html.Div(
+                [
+                    html.Label("Carrier", style={"fontWeight": "600"}),
+                    dcc.Dropdown(
+                        id="threshold-metrics-carrier",
+                        placeholder="All carriers",
+                        options=[],
+                        value="ALL",
+                        clearable=False,
+                    ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
+                    html.Label("Hours before departure", style={"fontWeight": "600"}),
+                    dcc.RangeSlider(
+                        id="threshold-metrics-hours-range",
+                        min=0,
+                        max=100,
+                        step=1,
+                        value=[0, 100],
+                        allowCross=False,
+                        tooltip={"placement": "bottom", "always_visible": False},
+                    ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
+                    html.Label("Threshold points", style={"fontWeight": "600"}),
+                    dcc.Input(
+                        id="threshold-metrics-threshold-points",
+                        type="number",
+                        min=11,
+                        step=1,
+                        value=200,
+                        style={"width": "100%"},
+                    ),
+                ],
+                style={"marginBottom": "1rem"},
+            ),
+            html.Div(
+                [
+                    html.Label("Metrics", style={"fontWeight": "600"}),
+                    dcc.Checklist(
+                        id="threshold-metrics-selection",
+                        options=[
+                            {"label": "Accuracy", "value": "Accuracy"},
+                            {"label": "Balanced Accuracy", "value": "Balanced Accuracy"},
+                            {"label": "Prevalence", "value": "Prevalence"},
+                            {"label": "F-Score", "value": "F-Score"},
+                            {"label": "FM Index", "value": "FM Index"},
+                            {"label": "Negative F-Score", "value": "Negative F-Score"},
+                            {"label": "Negative FM Index", "value": "Negative FM Index"},
+                            {"label": "Precision", "value": "Precision"},
+                            {"label": "Recall", "value": "Recall"},
+                            {"label": "False Negative Rate", "value": "False Negative Rate"},
+                            {"label": "Negative Precision", "value": "Negative Precision"},
+                            {"label": "Negative Recall", "value": "Negative Recall"},
+                            {"label": "False Positive Rate", "value": "False Positive Rate"},
+                        ],
+                        value=["Accuracy", "F-Score", "Negative F-Score"],
+                        labelStyle={"display": "block"},
+                        style={"marginTop": "0.5rem"},
+                    ),
+                ]
+            ),
+        ],
+        style=CONTROL_CARD_STYLE,
+    )
+
+    chart_card = html.Div(
+        [
+            html.H4(
+                "Metrics by threshold",
+                style={"margin": "0 0 0.5rem 0", "color": "#1b4965"},
+            ),
+            html.Div(
+                id="threshold-metrics-status",
+                className="status-message",
+                style={"marginBottom": "0.5rem", "color": "#c1121f", "fontWeight": 600},
+            ),
+            dcc.Graph(id="threshold-metrics-graph", figure={}, style={"height": "420px"}),
+        ],
+        style={
+            "backgroundColor": "#ffffff",
+            "borderRadius": "12px",
+            "boxShadow": "0 2px 10px rgba(0, 0, 0, 0.08)",
+            "padding": "1rem",
+            "flex": "1",
+        },
+    )
+
+    return html.Div(
+        [
+            html.H3(
+                "Metrics vs. Threshold",
+                style={"margin": "0 0 0.75rem 0", "color": "#1b4965"},
+            ),
+            html.Div(
+                [
+                    html.Div(
+                        control_panel,
+                        className="side-panel",
+                        style={"flex": "0 0 320px"},
+                    ),
+                    chart_card,
+                ],
+                className="split-panel",
+                style={"display": "flex", "gap": "1rem", "alignItems": "stretch"},
+            ),
+        ],
+        style={"marginBottom": "1.5rem"},
+    )
+
+
 def _build_roc_pr_section() -> html.Div:
     """Create the ROC and precision-recall controls and charts."""
 
@@ -503,6 +628,7 @@ def build_performance_tab() -> dcc.Tab:
             html.Div(
                 [
                     _build_performance_overview_section(),
+                    _build_threshold_metrics_section(),
                     html.Div(
                         [
                             html.H2(

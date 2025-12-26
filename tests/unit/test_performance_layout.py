@@ -118,3 +118,24 @@ def test_performance_overview_controls_and_table_present():
     assert carrier_dropdown is not None, "Performance overview carrier dropdown should be present"
     assert hours_range is not None, "Performance overview hours range slider should be present"
     assert grid is not None, "Performance overview grid should be present"
+
+
+def test_threshold_metrics_controls_and_chart_present():
+    section = layout._build_threshold_metrics_section()
+
+    carrier_dropdown = _find_component(section, "threshold-metrics-carrier")
+    hours_range = _find_component(section, "threshold-metrics-hours-range")
+    threshold_input = _find_component(section, "threshold-metrics-threshold-points")
+    metrics_selection = _find_component(section, "threshold-metrics-selection")
+    graph = _find_component(section, "threshold-metrics-graph")
+
+    assert carrier_dropdown is not None, "Threshold metrics carrier dropdown should be present"
+    assert hours_range is not None, "Threshold metrics hours range slider should be present"
+    assert threshold_input is not None, "Threshold points input should be present"
+    assert metrics_selection is not None, "Metrics checklist should be present"
+    assert graph is not None, "Threshold metrics graph should be present"
+    assert metrics_selection.value == [
+        "Accuracy",
+        "F-Score",
+        "Negative F-Score",
+    ], "Default metric selection should be accuracy and F-scores"
