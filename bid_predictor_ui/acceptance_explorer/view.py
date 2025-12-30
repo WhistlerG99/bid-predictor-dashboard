@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import os
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence
 
 import pandas as pd
@@ -37,6 +38,19 @@ _ACCEPTANCE_TABLE_FEATURES = [
     "bid_rank",
     "Current Time",
 ]
+
+
+def _default_acceptance_config() -> Optional[Mapping[str, object]]:
+    s3_uri = os.getenv("S3_DATASET_LISTING_URI")
+    if not s3_uri:
+        return None
+    try:
+        hours = int(os.getenv("S3_DATASET_LOOKBACK_HOURS", "120"))
+    except (TypeError, ValueError):
+        hours = 120
+    if hours <= 0:
+        hours = 120
+    return {"source": "path", "path": s3_uri, "hours": hours}
 
 
 def _acceptance_feature_config() -> Dict[str, List[str]]:
@@ -308,6 +322,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         selection_request: Optional[Dict[str, str]],
         current_value: Optional[str],
     ):
+        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return [], None
         dataset = load_acceptance_dataset(dataset_config)
@@ -334,6 +349,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         dataset_config: Optional[object],
         current_value: Optional[str],
     ):
+        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config or not carrier:
             return [], None
         dataset = load_acceptance_dataset(dataset_config)
@@ -366,6 +382,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         dataset_config: Optional[object],
         current_value: Optional[str],
     ):
+        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config or not carrier or not flight_number:
             return [], None
         dataset = load_acceptance_dataset(dataset_config)
@@ -408,6 +425,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         dataset_config: Optional[object],
         current_value: Optional[str],
     ):
+        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config or not carrier or not flight_number or not travel_date:
             return [], None
         dataset = load_acceptance_dataset(dataset_config)
@@ -442,6 +460,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         travel_date: Optional[str],
         dataset_config: Optional[object],
     ):
+        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config or not carrier or not flight_number or not travel_date or not upgrade:
             return [], None
         dataset = load_acceptance_dataset(dataset_config)
@@ -475,6 +494,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         travel_date: Optional[str],
         upgrade: Optional[str],
     ):
+        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config or not carrier or not flight_number:
             return "–", "–", "–"
 
@@ -530,6 +550,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         dataset_config: Optional[object],
     ):
         summary = _build_summary(carrier, flight_number, travel_date, upgrade_type)
+        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return (
                 summary,

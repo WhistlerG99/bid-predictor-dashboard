@@ -6,10 +6,8 @@ from copy import deepcopy
 from typing import Optional
 
 import io
-import json
 import threading
 import time
-from contextlib import closing
 from datetime import datetime, timedelta
 import mlflow
 import pandas as pd
@@ -21,10 +19,6 @@ try:  # pragma: no cover - optional dependency in some environments
     import redis  # type: ignore[import]
 except ImportError:  # pragma: no cover
     redis = None
-try:  # pragma: no cover - optional dependency
-    import psycopg2
-except ImportError:  # pragma: no cover
-    psycopg2 = None
 # from bid_predictor.utils import detect_execution_environment
 
 from bid_predictor_ui import (
@@ -41,6 +35,9 @@ from bid_predictor_ui.data_sources import (
     _normalize_config,
     _filter_files_by_recent_hours,
     _list_remote_files,
+    cache_offer_statuses,
+    enrich_with_offer_status,
+    fetch_offer_statuses,
 )
 from bid_predictor_ui.feature_sensitivity import (
     build_feature_sensitivity_tab,
@@ -59,6 +56,13 @@ from bid_predictor_ui.performance_tracker import (
     build_performance_tab,
     register_performance_callbacks,
 )
+from bid_predictor_ui.performance_history import (
+    build_performance_history_tab,
+    register_performance_history_callbacks,
+)
+from bid_predictor_ui.performance_history.data import (
+    update_performance_history_from_source,
+)
 from bid_predictor_ui import data_sources as data_sources_module
 from bid_predictor_ui.acceptance_explorer.view import _normalize_acceptance_dataset
 
@@ -72,18 +76,11 @@ default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
 # Acceptance dataset configuration via S3 listing and Redis cache
 S3_DATASET_LISTING_URI = os.environ.get("S3_DATASET_LISTING_URI")
 DEFAULT_S3_LOOKBACK_HOURS = int(os.getenv("S3_DATASET_LOOKBACK_HOURS", "120"))
+PERFORMANCE_HISTORY_S3_URI = os.getenv("PERFORMANCE_HISTORY_S3_URI")
+PERFORMANCE_HISTORY_REFRESH_DAYS = int(os.getenv("PERFORMANCE_HISTORY_REFRESH_DAYS", "3"))
 REDIS_URL = os.getenv("REDIS_URL")
 # Rolling window cache: automatically refresh data every hour for this many hours
 ROLLING_WINDOW_HOURS = int(os.getenv("ROLLING_WINDOW_HOURS", "240"))
-
-# Redshift configuration for offer_status
-REDSHIFT_HOST = os.getenv("REDSHIFT_HOST")
-REDSHIFT_DATABASE = os.getenv("REDSHIFT_DATABASE")
-REDSHIFT_USER = os.getenv("REDSHIFT_USER")
-REDSHIFT_PASSWORD = os.getenv("REDSHIFT_PASSWORD")
-REDSHIFT_PORT = os.getenv("REDSHIFT_PORT", "5439")
-REDSHIFT_OFFERS_TABLE = "prd_offers_rds.offers"
-
 
 def _get_redis_client() -> Optional["redis.Redis"]:
     """Return a Redis client if configured, otherwise None."""
@@ -94,97 +91,6 @@ def _get_redis_client() -> Optional["redis.Redis"]:
         return redis.Redis.from_url(REDIS_URL)  # type: ignore[no-any-return]
     except Exception:  # pragma: no cover - defensive
         return None
-
-
-def _get_redshift_connection():
-    """Get Redshift connection if configured."""
-    if not all([REDSHIFT_HOST, REDSHIFT_DATABASE, REDSHIFT_USER, REDSHIFT_PASSWORD]) or psycopg2 is None:
-        return None
-    try:
-        return psycopg2.connect(
-            host=REDSHIFT_HOST,
-            database=REDSHIFT_DATABASE,
-            user=REDSHIFT_USER,
-            password=REDSHIFT_PASSWORD,
-            port=int(REDSHIFT_PORT),
-        )
-    except Exception as exc:
-        print(f"[Redshift] Failed to connect: {exc}")
-        return None
-
-
-def _fetch_offer_statuses(offer_ids: list[str]) -> dict[str, str]:
-    """Fetch offer_status for given offer_ids from Redshift."""
-    if not offer_ids:
-        return {}
-    
-    conn = _get_redshift_connection()
-    if conn is None:
-        return {}
-    
-    try:
-        # Query Redshift for offer_status
-        # Use parameterized query to avoid SQL injection
-        placeholders = ",".join(["%s"] * len(offer_ids))
-        query = f"""
-            SELECT id, offer_status
-            FROM {REDSHIFT_OFFERS_TABLE}
-            WHERE id IN ({placeholders})
-        """
-        
-        with closing(conn) as c:
-            with c.cursor() as cursor:
-                cursor.execute(query, offer_ids)
-                results = cursor.fetchall()
-                return {str(row[0]): str(row[1]) for row in results if row[0] and row[1]}
-    except Exception as exc:
-        print(f"[Redshift] Failed to fetch offer_statuses: {exc}")
-        return {}
-
-
-def _offer_status_cache_key(hour_timestamp: pd.Timestamp) -> str:
-    """Cache key for offer_status mapping for a specific hour."""
-    prefix = S3_DATASET_LISTING_URI or ""
-    hour_str = hour_timestamp.strftime("%Y-%m-%dT%H")
-    return f"offer_status_hour:{prefix}:{hour_str}"
-
-
-def _get_offer_statuses_from_cache(hour_timestamps: list[pd.Timestamp]) -> dict[str, str]:
-    """Get offer_status mappings from cache for given hours."""
-    cache_client = _get_redis_client()
-    if cache_client is None:
-        return {}
-    
-    combined_statuses = {}
-    for hour_ts in hour_timestamps:
-        cache_key = _offer_status_cache_key(hour_ts)
-        cached = cache_client.get(cache_key)
-        if cached:
-            try:
-                statuses = json.loads(cached.decode('utf-8'))
-                combined_statuses.update(statuses)
-            except Exception as exc:
-                print(f"[Offer status cache] Failed to load cache for {hour_ts}: {exc}")
-    
-    return combined_statuses
-
-
-def _cache_offer_statuses(hour_timestamp: pd.Timestamp, statuses: dict[str, str]) -> None:
-    """Cache offer_status mappings for a specific hour."""
-    cache_client = _get_redis_client()
-    if cache_client is None:
-        return
-    
-    try:
-        cache_key = _offer_status_cache_key(hour_timestamp)
-        # Cache for 2 hours (same as data buckets)
-        cache_client.setex(cache_key, 7200, json.dumps(statuses))
-        print(
-            f"[Offer status cache] Cached {len(statuses)} offer_status mappings "
-            f"for hour {hour_timestamp.strftime('%Y-%m-%d %H:00')}."
-        )
-    except Exception as exc:
-        print(f"[Offer status cache] Failed to cache offer_statuses: {exc}")
 
 
 def _acceptance_cache_key(hours: int) -> str:
@@ -317,9 +223,14 @@ def _refresh_hourly_cache() -> None:
                 if "offer_id" in hour_data.columns:
                     offer_ids = hour_data["offer_id"].dropna().astype(str).unique().tolist()
                     if offer_ids:
-                        offer_statuses = _fetch_offer_statuses(offer_ids)
+                        offer_statuses = fetch_offer_statuses(offer_ids)
                         if offer_statuses:
-                            _cache_offer_statuses(current_hour, offer_statuses)
+                            cache_offer_statuses(
+                                cache_client,
+                                S3_DATASET_LISTING_URI or "",
+                                current_hour,
+                                offer_statuses,
+                            )
             except Exception as exc:
                 print(f"[Hourly refresh] Failed to cache hour {current_hour}: {exc}")
         else:
@@ -423,61 +334,15 @@ def _load_from_hour_buckets(hours: int) -> Optional[pd.DataFrame]:
             f"({len(combined):,} rows) for {hours}h window."
         )
         # Enrich with offer_status
-        combined = _enrich_with_offer_status(combined, required_buckets)
+        combined = enrich_with_offer_status(
+            combined,
+            cache_client=cache_client,
+            cache_prefix=S3_DATASET_LISTING_URI or "",
+            hour_timestamps=required_buckets,
+        )
         return combined
     
     return pd.DataFrame()  # Empty result
-
-
-def _enrich_with_offer_status(dataset: pd.DataFrame, hour_timestamps: Optional[list[pd.Timestamp]] = None) -> pd.DataFrame:
-    """Enrich dataset with offer_status from cache or Redshift."""
-    if dataset.empty or "offer_id" not in dataset.columns:
-        return dataset
-    
-    # Get hour timestamps if not provided
-    if hour_timestamps is None:
-        if "accept_prob_timestamp" in dataset.columns:
-            timestamps = pd.to_datetime(dataset["accept_prob_timestamp"], errors="coerce")
-            hour_timestamps = [
-                ts.replace(minute=0, second=0, microsecond=0)
-                for ts in timestamps.dropna().unique()
-            ]
-        else:
-            hour_timestamps = []
-    
-    # Try to get offer_statuses from cache first
-    offer_statuses = _get_offer_statuses_from_cache(hour_timestamps)
-    
-    # Get unique offer_ids that we don't have status for
-    dataset_offer_ids = dataset["offer_id"].dropna().astype(str).unique().tolist()
-    missing_offer_ids = [oid for oid in dataset_offer_ids if oid not in offer_statuses]
-    
-    # Fetch missing offer_statuses from Redshift
-    if missing_offer_ids:
-        print(f"[Offer status] Fetching {len(missing_offer_ids)} offer_statuses from Redshift...")
-        fetched_statuses = _fetch_offer_statuses(missing_offer_ids)
-
-        offer_statuses.update(fetched_statuses)
-        
-        # Cache the fetched statuses for the relevant hours
-        if hour_timestamps and fetched_statuses:
-            # Cache for the most recent hour
-            if hour_timestamps:
-                most_recent_hour = max(hour_timestamps)
-                _cache_offer_statuses(most_recent_hour, fetched_statuses)
-    
-    # Map offer_status to dataset
-    dataset = dataset.copy()
-    dataset["offer_id_str"] = dataset["offer_id"].astype(str)
-    dataset["offer_status"] = dataset["offer_id_str"].map(offer_statuses)
-    
-    # Show "pending" for offers without status (not TICKETED or EXPIRED)
-    dataset["offer_status"] = dataset["offer_status"].fillna("pending")
-    
-    # Drop temporary column
-    dataset = dataset.drop(columns=["offer_id_str"], errors="ignore")
-    
-    return dataset
 
 
 def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> None:
@@ -498,6 +363,23 @@ def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> N
         )
     except Exception as exc:
         print(f"[Acceptance loader] Warning: Failed to populate internal cache: {exc}")
+
+
+def _maybe_update_performance_history() -> None:
+    """Update the performance history parquet if configured."""
+    if not PERFORMANCE_HISTORY_S3_URI or not S3_DATASET_LISTING_URI:
+        return
+    cache_client = _get_redis_client()
+    try:
+        update_performance_history_from_source(
+            PERFORMANCE_HISTORY_S3_URI,
+            S3_DATASET_LISTING_URI,
+            refresh_days=PERFORMANCE_HISTORY_REFRESH_DAYS,
+            cache_client=cache_client,
+        )
+        print("[Performance history] Updated performance history file.")
+    except Exception as exc:  # pragma: no cover - non-blocking background update
+        print(f"[Performance history] Failed to update history file: {exc}")
 
 
 # -- Dash application --------------------------------------------------------------------------
@@ -540,6 +422,7 @@ def create_app() -> Dash:
                     dcc.Tab(label="Feature sensitivity", value="sensitivity"),
                     dcc.Tab(label="Acceptance explorer", value="acceptance"),
                     dcc.Tab(label="Performance tracker", value="performance"),
+                    dcc.Tab(label="Performance history", value="history"),
                 ],
                 style={"marginTop": "1rem", "marginBottom": "1rem"},
             ),
@@ -808,6 +691,7 @@ def create_app() -> Dash:
     register_feature_sensitivity_callbacks(app)
     register_acceptance_callbacks(app)
     register_performance_callbacks(app)
+    register_performance_history_callbacks(app)
 
     # Start background hourly refresh thread
     if REDIS_URL and S3_DATASET_LISTING_URI:
@@ -845,6 +729,8 @@ def create_app() -> Dash:
         if active_tab in {"acceptance", "performance"}:
             standard_style["display"] = "none"
             acceptance_style["display"] = "flex"
+        if active_tab == "history":
+            standard_style["display"] = "none"
         return standard_style, acceptance_style
 
 
@@ -861,6 +747,8 @@ def create_app() -> Dash:
             return build_acceptance_tab().children
         if active_tab == "performance":
             return build_performance_tab().children
+        if active_tab == "history":
+            return build_performance_history_tab().children
         return build_snapshot_tab().children
 
 
@@ -948,6 +836,7 @@ def create_app() -> Dash:
                     "hours": hours,
                 }
                 _populate_acceptance_cache(bucket_data, dataset_config)
+                _maybe_update_performance_history()
                 return status, dataset_config, loader_status
         
         # Fall back to legacy full-window cache or S3
@@ -961,7 +850,11 @@ def create_app() -> Dash:
                     buffer = io.BytesIO(cached)
                     dataset = pd.read_parquet(buffer)
                     # Enrich with offer_status
-                    dataset = _enrich_with_offer_status(dataset)
+                    dataset = enrich_with_offer_status(
+                        dataset,
+                        cache_client=cache_client,
+                        cache_prefix=S3_DATASET_LISTING_URI or "",
+                    )
                     print(
                         f"[Acceptance loader] Using cached dataset from Redis for "
                         f"last {hours} hours ({len(dataset):,} rows)."
@@ -980,6 +873,7 @@ def create_app() -> Dash:
                     }
                     # Populate internal cache so dropdowns work
                     _populate_acceptance_cache(dataset, dataset_config)
+                    _maybe_update_performance_history()
                     return status, dataset_config, loader_status
                 except Exception as exc:  # pragma: no cover - cache decode issues
                     print(f"[Acceptance loader] Failed to read cached dataset: {exc}")
@@ -1028,7 +922,11 @@ def create_app() -> Dash:
                                             print(f"[Acceptance loader] Failed to cache filtered dataset: {exc}")
                                         
                                         # Enrich with offer_status
-                                        filtered_dataset = _enrich_with_offer_status(filtered_dataset)
+                                        filtered_dataset = enrich_with_offer_status(
+                                            filtered_dataset,
+                                            cache_client=cache_client,
+                                            cache_prefix=S3_DATASET_LISTING_URI or "",
+                                        )
                                         
                                         status = (
                                             f"Loaded acceptance dataset from cache (filtered from {larger_hours}h to {hours}h) "
@@ -1045,6 +943,7 @@ def create_app() -> Dash:
                                         }
                                         # Populate internal cache so dropdowns work
                                         _populate_acceptance_cache(filtered_dataset, dataset_config)
+                                        _maybe_update_performance_history()
                                         return status, dataset_config, loader_status
                                     else:
                                         print(
@@ -1095,7 +994,12 @@ def create_app() -> Dash:
             dataset = load_acceptance_dataset(dataset_config, reload=True)
             # Enrich with offer_status
             hour_buckets = _get_hour_buckets_for_window(hours) if hours <= ROLLING_WINDOW_HOURS else []
-            dataset = _enrich_with_offer_status(dataset, hour_buckets if hour_buckets else None)
+            dataset = enrich_with_offer_status(
+                dataset,
+                cache_client=cache_client,
+                cache_prefix=S3_DATASET_LISTING_URI or "",
+                hour_timestamps=hour_buckets if hour_buckets else None,
+            )
         except Exception as exc:  # pragma: no cover - user feedback
             error_msg = f"Failed to load acceptance dataset: {exc}"
             return error_msg, None, error_msg
@@ -1144,7 +1048,12 @@ def create_app() -> Dash:
                                         hour_data["offer_status"]
                                     )
                                 )
-                                _cache_offer_statuses(hour_ts, offer_statuses)
+                                cache_offer_statuses(
+                                    cache_client,
+                                    S3_DATASET_LISTING_URI or "",
+                                    hour_ts,
+                                    offer_statuses,
+                                )
                 except Exception as exc:
                     print(f"[Acceptance loader] Failed to populate hour buckets: {exc}")
 
@@ -1158,6 +1067,7 @@ def create_app() -> Dash:
         )
         # Populate internal cache so dropdowns work
         _populate_acceptance_cache(dataset, dataset_config)
+        _maybe_update_performance_history()
         return status, dataset_config, loader_status
 
 
