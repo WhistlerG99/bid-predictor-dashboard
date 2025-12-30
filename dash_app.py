@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta
 import mlflow
 import pandas as pd
-from dash import Dash, Input, Output, State, callback_context, dcc, html
+from dash import Dash, Input, Output, State, callback_context, dcc, html, no_update
 from mlflow.exceptions import MlflowException
 from dotenv import load_dotenv
 from pyarrow import fs as pyfs
@@ -887,11 +887,11 @@ def create_app() -> Dash:
 
         cache_client = _get_redis_client()
 
-        if source_mode == "file":
+        if trigger == "acceptance-path-apply":
             if not path_value:
                 message = "Provide a dataset path to load file data."
-                return message, None, message
-            reload_flag = trigger == "acceptance-path-apply"
+                return message, no_update, message
+            reload_flag = True
             dataset_config = {
                 "source": "path",
                 "path": path_value,
@@ -914,13 +914,16 @@ def create_app() -> Dash:
             _maybe_update_performance_history()
             return status, dataset_config, loader_status
 
+        if trigger != "acceptance-lookback-apply":
+            message = "Select a data source and click Apply to load acceptance data."
+            return message, no_update, message
         if source_mode != "environment":
-            message = "Select a valid data source to load acceptance data."
-            return message, None, message
+            message = "Select Environment to load cached acceptance data."
+            return message, no_update, message
 
         if not S3_DATASET_LISTING_URI:
             message = "S3_DATASET_LISTING_URI is not configured."
-            return message, None, message
+            return message, no_update, message
         
         # First, try loading from hour buckets (new rolling window cache)
         if hours <= ROLLING_WINDOW_HOURS:
