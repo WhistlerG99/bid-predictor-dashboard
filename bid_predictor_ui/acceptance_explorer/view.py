@@ -13,7 +13,7 @@ from ..dropdowns import choose_dropdown_value, options_from_series
 from ..snapshots import build_snapshot_options
 from ..data_sources import (
     DEFAULT_ACCEPTANCE_TABLE,
-    load_dataset_from_source,
+    load_dataset_with_offer_status,
 )
 from ..feature_config import DEFAULT_UI_FEATURE_CONFIG
 from ..formatting import prepare_bid_record
@@ -201,16 +201,24 @@ def _select_first_series(
 
 
 def load_acceptance_dataset(
-    config: str | Mapping[str, object], *, reload: bool = False
+    config: str | Mapping[str, object],
+    *,
+    cache_client: Optional[object] = None,
+    cache_prefix: str = "",
+    hour_timestamps: Optional[list[pd.Timestamp]] = None,
+    reload: bool = False,
 ) -> pd.DataFrame:
     """Load acceptance data from a file path or Redshift table."""
 
     if not config:
         raise ValueError("No acceptance dataset source provided.")
 
-    return load_dataset_from_source(
+    return load_dataset_with_offer_status(
         config,
         normalizer=_normalize_acceptance_dataset,
+        cache_client=cache_client,
+        cache_prefix=cache_prefix,
+        hour_timestamps=hour_timestamps,
         reload=reload,
     )
 

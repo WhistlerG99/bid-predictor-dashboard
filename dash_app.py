@@ -345,11 +345,22 @@ def _load_from_hour_buckets(hours: int) -> Optional[pd.DataFrame]:
     return pd.DataFrame()  # Empty result
 
 
-def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> None:
+def _populate_acceptance_cache(
+    dataset: pd.DataFrame,
+    dataset_config: dict,
+    *,
+    normalize_offer_status: bool = True,
+) -> None:
     """Populate the internal acceptance dataset cache so dropdowns work."""
     try:
-        # Normalize the dataset (same as load_acceptance_dataset does)
-        normalized_dataset = _normalize_acceptance_dataset(dataset.copy())
+        normalized_dataset = dataset.copy()
+        if normalize_offer_status:
+            normalized_dataset = enrich_with_offer_status(
+                normalized_dataset,
+                cache_client=_get_redis_client(),
+                cache_prefix=S3_DATASET_LISTING_URI or "",
+            )
+        normalized_dataset = _normalize_acceptance_dataset(normalized_dataset)
         
         # Build the cache key the same way load_dataset_from_source does
         normalized_config = _normalize_config(dataset_config)
@@ -565,6 +576,39 @@ def create_app() -> Dash:
                     ),
                     html.Div(
                         [
+                            html.Div(
+                                [
+                                    html.Label(
+                                        "Dataset path (optional)",
+                                        style={"fontWeight": "600"},
+                                    ),
+                                    dcc.Input(
+                                        id="acceptance-dataset-path",
+                                        type="text",
+                                        value="",
+                                        placeholder="Path to acceptance dataset (.csv/.parquet)",
+                                        style={
+                                            "width": "100%",
+                                            "marginBottom": "0.5rem",
+                                        },
+                                    ),
+                                    html.Button(
+                                        "Load file path",
+                                        id="acceptance-path-apply",
+                                        n_clicks=0,
+                                        style={
+                                            "width": "100%",
+                                            "backgroundColor": "#1b4965",
+                                            "color": "white",
+                                            "border": "none",
+                                            "padding": "0.5rem",
+                                            "borderRadius": "6px",
+                                            "marginBottom": "0.75rem",
+                                        },
+                                    ),
+                                ],
+                                style={"width": "100%"},
+                            ),
                             html.Div(
                                 [
                                     html.Label(
@@ -787,17 +831,19 @@ def create_app() -> Dash:
         Output("acceptance-loader-status", "children"),
         Input("acceptance-loader-interval", "n_intervals"),
         Input("acceptance-lookback-apply", "n_clicks"),
+        Input("acceptance-path-apply", "n_clicks"),
         State("acceptance-lookback-hours", "value"),
+        State("acceptance-dataset-path", "value"),
         prevent_initial_call=False,
     )
     def load_acceptance_dataset_on_startup(
         n_intervals: int,
         apply_clicks: int,
+        path_clicks: int,
         lookback_value: Optional[int],
+        custom_path: Optional[str],
     ):
-        if not S3_DATASET_LISTING_URI:
-            message = "S3_DATASET_LISTING_URI is not configured."
-            return message, None, message
+        path_value = (custom_path or "").strip()
 
         # Resolve lookback window in hours from user input
         try:
@@ -813,6 +859,34 @@ def create_app() -> Dash:
             trigger = callback_context.triggered[0]["prop_id"].split(".")[0]
 
         cache_client = _get_redis_client()
+
+        if path_value:
+            reload_flag = trigger == "acceptance-path-apply"
+            dataset_config = {
+                "source": "path",
+                "path": path_value,
+                "hours": None,
+            }
+            try:
+                dataset = load_acceptance_dataset(
+                    dataset_config,
+                    cache_client=cache_client,
+                    cache_prefix=S3_DATASET_LISTING_URI or "",
+                    reload=reload_flag,
+                )
+            except Exception as exc:  # pragma: no cover - user feedback
+                error_msg = f"Failed to load acceptance dataset: {exc}"
+                return error_msg, None, error_msg
+
+            status = f"Loaded acceptance dataset from {path_value} with {len(dataset):,} rows."
+            loader_status = f"Acceptance data loaded from {path_value} ({len(dataset):,} rows)."
+            _populate_acceptance_cache(dataset, dataset_config, normalize_offer_status=False)
+            _maybe_update_performance_history()
+            return status, dataset_config, loader_status
+
+        if not S3_DATASET_LISTING_URI:
+            message = "S3_DATASET_LISTING_URI is not configured."
+            return message, None, message
         
         # First, try loading from hour buckets (new rolling window cache)
         if hours <= ROLLING_WINDOW_HOURS:
@@ -835,7 +909,12 @@ def create_app() -> Dash:
                     "path": S3_DATASET_LISTING_URI,
                     "hours": hours,
                 }
-                _populate_acceptance_cache(bucket_data, dataset_config)
+                normalize_offer_status = "offer_status" not in bucket_data.columns
+                _populate_acceptance_cache(
+                    bucket_data,
+                    dataset_config,
+                    normalize_offer_status=normalize_offer_status,
+                )
                 _maybe_update_performance_history()
                 return status, dataset_config, loader_status
         
@@ -849,12 +928,12 @@ def create_app() -> Dash:
                 try:
                     buffer = io.BytesIO(cached)
                     dataset = pd.read_parquet(buffer)
-                    # Enrich with offer_status
-                    dataset = enrich_with_offer_status(
-                        dataset,
-                        cache_client=cache_client,
-                        cache_prefix=S3_DATASET_LISTING_URI or "",
-                    )
+                    if "offer_status" not in dataset.columns:
+                        dataset = enrich_with_offer_status(
+                            dataset,
+                            cache_client=cache_client,
+                            cache_prefix=S3_DATASET_LISTING_URI or "",
+                        )
                     print(
                         f"[Acceptance loader] Using cached dataset from Redis for "
                         f"last {hours} hours ({len(dataset):,} rows)."
@@ -872,7 +951,12 @@ def create_app() -> Dash:
                         "hours": hours,
                     }
                     # Populate internal cache so dropdowns work
-                    _populate_acceptance_cache(dataset, dataset_config)
+                    normalize_offer_status = "offer_status" not in dataset.columns
+                    _populate_acceptance_cache(
+                        dataset,
+                        dataset_config,
+                        normalize_offer_status=normalize_offer_status,
+                    )
                     _maybe_update_performance_history()
                     return status, dataset_config, loader_status
                 except Exception as exc:  # pragma: no cover - cache decode issues
@@ -921,12 +1005,12 @@ def create_app() -> Dash:
                                         except Exception as exc:
                                             print(f"[Acceptance loader] Failed to cache filtered dataset: {exc}")
                                         
-                                        # Enrich with offer_status
-                                        filtered_dataset = enrich_with_offer_status(
-                                            filtered_dataset,
-                                            cache_client=cache_client,
-                                            cache_prefix=S3_DATASET_LISTING_URI or "",
-                                        )
+                                        if "offer_status" not in filtered_dataset.columns:
+                                            filtered_dataset = enrich_with_offer_status(
+                                                filtered_dataset,
+                                                cache_client=cache_client,
+                                                cache_prefix=S3_DATASET_LISTING_URI or "",
+                                            )
                                         
                                         status = (
                                             f"Loaded acceptance dataset from cache (filtered from {larger_hours}h to {hours}h) "
@@ -942,7 +1026,12 @@ def create_app() -> Dash:
                                             "hours": hours,
                                         }
                                         # Populate internal cache so dropdowns work
-                                        _populate_acceptance_cache(filtered_dataset, dataset_config)
+                                        normalize_offer_status = "offer_status" not in filtered_dataset.columns
+                                        _populate_acceptance_cache(
+                                            filtered_dataset,
+                                            dataset_config,
+                                            normalize_offer_status=normalize_offer_status,
+                                        )
                                         _maybe_update_performance_history()
                                         return status, dataset_config, loader_status
                                     else:
@@ -990,15 +1079,16 @@ def create_app() -> Dash:
             "hours": hours,
         }
 
+        hour_buckets = (
+            _get_hour_buckets_for_window(hours) if hours <= ROLLING_WINDOW_HOURS else []
+        )
         try:
-            dataset = load_acceptance_dataset(dataset_config, reload=True)
-            # Enrich with offer_status
-            hour_buckets = _get_hour_buckets_for_window(hours) if hours <= ROLLING_WINDOW_HOURS else []
-            dataset = enrich_with_offer_status(
-                dataset,
+            dataset = load_acceptance_dataset(
+                dataset_config,
                 cache_client=cache_client,
                 cache_prefix=S3_DATASET_LISTING_URI or "",
                 hour_timestamps=hour_buckets if hour_buckets else None,
+                reload=True,
             )
         except Exception as exc:  # pragma: no cover - user feedback
             error_msg = f"Failed to load acceptance dataset: {exc}"
@@ -1066,7 +1156,12 @@ def create_app() -> Dash:
             f"Acceptance data loaded from S3 ({file_count} files, {len(dataset):,} rows)."
         )
         # Populate internal cache so dropdowns work
-        _populate_acceptance_cache(dataset, dataset_config)
+        normalize_offer_status = "offer_status" not in dataset.columns
+        _populate_acceptance_cache(
+            dataset,
+            dataset_config,
+            normalize_offer_status=normalize_offer_status,
+        )
         _maybe_update_performance_history()
         return status, dataset_config, loader_status
 
