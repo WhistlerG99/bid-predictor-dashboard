@@ -348,7 +348,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Output("acceptance-flight-number-dropdown", "value"),
         Input("acceptance-carrier-dropdown", "value"),
         Input("acceptance-selection-request-store", "data"),
-        State("acceptance-dataset-path-store", "data"),
+        Input("acceptance-dataset-path-store", "data"),
         State("acceptance-flight-number-dropdown", "value"),
     )
     def populate_flights(
@@ -380,7 +380,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Input("acceptance-flight-number-dropdown", "value"),
         Input("acceptance-selection-request-store", "data"),
         State("acceptance-carrier-dropdown", "value"),
-        State("acceptance-dataset-path-store", "data"),
+        Input("acceptance-dataset-path-store", "data"),
         State("acceptance-travel-date-dropdown", "value"),
     )
     def populate_travel_dates(
@@ -422,7 +422,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Input("acceptance-selection-request-store", "data"),
         State("acceptance-carrier-dropdown", "value"),
         State("acceptance-flight-number-dropdown", "value"),
-        State("acceptance-dataset-path-store", "data"),
+        Input("acceptance-dataset-path-store", "data"),
         State("acceptance-upgrade-dropdown", "value"),
     )
     def populate_upgrades(
@@ -459,7 +459,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         State("acceptance-carrier-dropdown", "value"),
         State("acceptance-flight-number-dropdown", "value"),
         State("acceptance-travel-date-dropdown", "value"),
-        State("acceptance-dataset-path-store", "data"),
+        Input("acceptance-dataset-path-store", "data"),
     )
     def populate_snapshots(
         upgrade: Optional[str],
@@ -538,6 +538,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Output("acceptance-bid-table", "data"),
         Output("acceptance-bid-table", "style_data_conditional"),
         Output("acceptance-table-feedback", "children"),
+        Input("acceptance-dataset-path-store", "data"),
         Input("acceptance-snapshot-dropdown", "value"),
         Input("acceptance-snapshot-frequency-dropdown", "value"),
         Input("acceptance-chart-style-radio", "value"),
@@ -545,9 +546,9 @@ def register_acceptance_callbacks(app: Dash) -> None:
         State("acceptance-flight-number-dropdown", "value"),
         State("acceptance-travel-date-dropdown", "value"),
         State("acceptance-upgrade-dropdown", "value"),
-        State("acceptance-dataset-path-store", "data"),
     )
     def render_view(
+        dataset_config: Optional[object],
         snapshot_value: Optional[str],
         snapshot_frequency: Optional[int],
         chart_style: Optional[str],
@@ -555,7 +556,6 @@ def register_acceptance_callbacks(app: Dash) -> None:
         flight_number: Optional[str],
         travel_date: Optional[str],
         upgrade_type: Optional[str],
-        dataset_config: Optional[object],
     ):
         summary = _build_summary(carrier, flight_number, travel_date, upgrade_type)
         dataset_config = dataset_config or _default_acceptance_config()
