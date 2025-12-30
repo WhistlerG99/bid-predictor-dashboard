@@ -579,6 +579,31 @@ def create_app() -> Dash:
                             html.Div(
                                 [
                                     html.Label(
+                                        "Acceptance data source",
+                                        style={"fontWeight": "600"},
+                                    ),
+                                    dcc.RadioItems(
+                                        id="acceptance-source-mode",
+                                        options=[
+                                            {
+                                                "label": "Environment (cached)",
+                                                "value": "environment",
+                                            },
+                                            {"label": "File path", "value": "file"},
+                                        ],
+                                        value="environment",
+                                        labelStyle={
+                                            "display": "inline-block",
+                                            "marginRight": "1rem",
+                                        },
+                                        style={"marginBottom": "0.75rem"},
+                                    ),
+                                ],
+                                style={"width": "100%"},
+                            ),
+                            html.Div(
+                                [
+                                    html.Label(
                                         "Dataset path (optional)",
                                         style={"fontWeight": "600"},
                                     ),
@@ -832,6 +857,7 @@ def create_app() -> Dash:
         Input("acceptance-loader-interval", "n_intervals"),
         Input("acceptance-lookback-apply", "n_clicks"),
         Input("acceptance-path-apply", "n_clicks"),
+        Input("acceptance-source-mode", "value"),
         State("acceptance-lookback-hours", "value"),
         State("acceptance-dataset-path", "value"),
         prevent_initial_call=False,
@@ -840,6 +866,7 @@ def create_app() -> Dash:
         n_intervals: int,
         apply_clicks: int,
         path_clicks: int,
+        source_mode: str,
         lookback_value: Optional[int],
         custom_path: Optional[str],
     ):
@@ -860,7 +887,10 @@ def create_app() -> Dash:
 
         cache_client = _get_redis_client()
 
-        if path_value:
+        if source_mode == "file":
+            if not path_value:
+                message = "Provide a dataset path to load file data."
+                return message, None, message
             reload_flag = trigger == "acceptance-path-apply"
             dataset_config = {
                 "source": "path",
@@ -883,6 +913,10 @@ def create_app() -> Dash:
             _populate_acceptance_cache(dataset, dataset_config, normalize_offer_status=False)
             _maybe_update_performance_history()
             return status, dataset_config, loader_status
+
+        if source_mode != "environment":
+            message = "Select a valid data source to load acceptance data."
+            return message, None, message
 
         if not S3_DATASET_LISTING_URI:
             message = "S3_DATASET_LISTING_URI is not configured."
