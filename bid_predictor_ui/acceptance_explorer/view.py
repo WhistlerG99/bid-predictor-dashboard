@@ -99,6 +99,9 @@ def _normalize_acceptance_dataset(dataset: pd.DataFrame) -> pd.DataFrame:
         if canonical not in dataset.columns and alias in dataset.columns:
             dataset[canonical] = dataset[alias]
 
+    dataset = dataset.replace({"offer_status": {'Accepted': "TICKETED", "Rejected": "EXPIRED"}})
+    dataset = dataset.drop("Bid #", axis=1, errors="ignore")
+
     if "accept_prob_timestamp" in dataset.columns:
         timestamps = pd.to_datetime(dataset["accept_prob_timestamp"], errors="coerce")
         dataset["current_timestamp"] = timestamps
@@ -106,6 +109,11 @@ def _normalize_acceptance_dataset(dataset: pd.DataFrame) -> pd.DataFrame:
         dataset["travel_date"] = pd.to_datetime(
             dataset["departure_timestamp"], errors="coerce"
         ).dt.date
+    if "days_before_departure" not in dataset.columns and "departure_timestamp" in dataset.columns and "current_timestamp" in dataset.columns:
+        departure_times = pd.to_datetime(dataset["departure_timestamp"], errors="coerce")
+        current_times = pd.to_datetime(dataset["current_timestamp"], errors="coerce")
+        deltas = (departure_times - current_times).dt.total_seconds() / 86400.0
+        dataset["days_before_departure"] = deltas
     if "hours_before_departure" not in dataset.columns and "days_before_departure" in dataset.columns:
         days = pd.to_numeric(dataset["days_before_departure"], errors="coerce")
         dataset["hours_before_departure"] = days * 24
