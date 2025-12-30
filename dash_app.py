@@ -77,10 +77,10 @@ default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
 S3_DATASET_LISTING_URI = os.environ.get("S3_DATASET_LISTING_URI")
 DEFAULT_S3_LOOKBACK_HOURS = int(os.getenv("S3_DATASET_LOOKBACK_HOURS", "120"))
 PERFORMANCE_HISTORY_S3_URI = os.getenv("PERFORMANCE_HISTORY_S3_URI")
-PERFORMANCE_HISTORY_REFRESH_DAYS = int(os.getenv("PERFORMANCE_HISTORY_REFRESH_DAYS", "3"))
+PERFORMANCE_HISTORY_REFRESH_DAYS = int(os.getenv("PERFORMANCE_HISTORY_REFRESH_DAYS", "5"))
 REDIS_URL = os.getenv("REDIS_URL")
 # Rolling window cache: automatically refresh data every hour for this many hours
-ROLLING_WINDOW_HOURS = int(os.getenv("ROLLING_WINDOW_HOURS", "240"))
+ROLLING_WINDOW_HOURS = int(os.getenv("ROLLING_WINDOW_HOURS", "120"))
 
 def _get_redis_client() -> Optional["redis.Redis"]:
     """Return a Redis client if configured, otherwise None."""
