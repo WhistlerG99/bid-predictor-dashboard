@@ -32,19 +32,6 @@ METRIC_LABELS = {
 }
 
 
-def _default_acceptance_config() -> Optional[Mapping[str, object]]:
-    s3_uri = os.getenv("S3_DATASET_LISTING_URI")
-    if not s3_uri:
-        return None
-    try:
-        hours = int(os.getenv("S3_DATASET_LOOKBACK_HOURS", "120"))
-    except (TypeError, ValueError):
-        hours = 120
-    if hours <= 0:
-        hours = 120
-    return {"source": "path", "path": s3_uri, "hours": hours}
-
-
 def _select_first_series(dataset: pd.DataFrame, columns: Iterable[str]) -> Optional[pd.Series]:
     for column in columns:
         if column in dataset.columns:
@@ -853,7 +840,6 @@ def register_performance_callbacks(app: Dash) -> None:
     def populate_accept_prob_carriers(
         dataset_config: Optional[Mapping[str, object]]
     ) -> Tuple[List[Dict[str, str]], str]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return ([{"label": "All", "value": "ALL"}], "ALL")
 
@@ -875,7 +861,6 @@ def register_performance_callbacks(app: Dash) -> None:
     def configure_accept_prob_hours_range(
         dataset_config: Optional[Mapping[str, object]]
     ) -> Tuple[float, float, List[float], Dict[int, str]]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return _compute_hours_range(pd.DataFrame())
 
@@ -894,7 +879,6 @@ def register_performance_callbacks(app: Dash) -> None:
     def populate_roc_pr_carriers(
         dataset_config: Optional[Mapping[str, object]]
     ) -> Tuple[List[Dict[str, str]], str]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return ([{"label": "All", "value": "ALL"}], "ALL")
 
@@ -916,7 +900,6 @@ def register_performance_callbacks(app: Dash) -> None:
     def configure_roc_pr_hours_range(
         dataset_config: Optional[Mapping[str, object]]
     ) -> Tuple[float, float, List[float], Dict[int, str]]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return _compute_hours_range(pd.DataFrame())
 
@@ -935,7 +918,6 @@ def register_performance_callbacks(app: Dash) -> None:
     def populate_performance_carriers(
         dataset_config: Optional[Mapping[str, object]]
     ) -> Tuple[List[Dict[str, str]], str]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return ([{"label": "All", "value": "ALL"}], "ALL")
 
@@ -955,7 +937,6 @@ def register_performance_callbacks(app: Dash) -> None:
     def populate_performance_overview_carriers(
         dataset_config: Optional[Mapping[str, object]]
     ) -> Tuple[List[Dict[str, str]], str]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return ([{"label": "All", "value": "ALL"}], "ALL")
 
@@ -977,7 +958,6 @@ def register_performance_callbacks(app: Dash) -> None:
     def configure_performance_overview_hours_range(
         dataset_config: Optional[Mapping[str, object]]
     ) -> Tuple[float, float, List[float], Dict[int, str]]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return _compute_hours_range(pd.DataFrame())
 
@@ -996,7 +976,6 @@ def register_performance_callbacks(app: Dash) -> None:
     def populate_threshold_metrics_carriers(
         dataset_config: Optional[Mapping[str, object]]
     ) -> Tuple[List[Dict[str, str]], str]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return ([{"label": "All", "value": "ALL"}], "ALL")
 
@@ -1018,7 +997,6 @@ def register_performance_callbacks(app: Dash) -> None:
     def configure_threshold_metrics_hours_range(
         dataset_config: Optional[Mapping[str, object]]
     ) -> Tuple[float, float, List[float], Dict[int, str]]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return _compute_hours_range(pd.DataFrame())
 
@@ -1045,7 +1023,6 @@ def register_performance_callbacks(app: Dash) -> None:
         selected_metrics: Optional[Iterable[str]],
         threshold_points: Optional[float],
     ) -> Tuple[str, go.Figure]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             message = "Load a dataset in the acceptance explorer controls to view metrics."
             return message, _empty_figure(message)
@@ -1082,7 +1059,6 @@ def register_performance_callbacks(app: Dash) -> None:
         carrier: Optional[str],
         hours_range: Optional[Iterable[float]],
     ) -> Tuple[str, List[html.Div]]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             message = "Load a dataset in the acceptance explorer controls to view performance metrics."
             return message, []
@@ -1128,7 +1104,6 @@ def register_performance_callbacks(app: Dash) -> None:
         stride: Optional[float],
         carrier: Optional[str],
     ) -> Tuple[object, go.Figure, go.Figure, go.Figure, go.Figure, go.Figure, go.Figure]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             message = "Load a dataset in the acceptance explorer controls to view performance metrics."
             empty = _empty_figure(message)
@@ -1236,7 +1211,6 @@ def register_performance_callbacks(app: Dash) -> None:
         carrier: Optional[str],
         hours_range: Optional[Iterable[float]],
     ) -> go.Figure:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             return _empty_figure(
                 "Load a dataset in the acceptance explorer controls to view the distribution."
@@ -1282,7 +1256,6 @@ def register_performance_callbacks(app: Dash) -> None:
         hours_range: Optional[Iterable[float]],
         threshold_points: Optional[float],
     ) -> Tuple[go.Figure, go.Figure, go.Figure, go.Figure]:
-        dataset_config = dataset_config or _default_acceptance_config()
         if not dataset_config:
             message = "Load a dataset in the acceptance explorer controls to view the curves."
             empty = _empty_figure(message)
