@@ -13,7 +13,7 @@ from ..dropdowns import choose_dropdown_value, options_from_series
 from ..snapshots import build_snapshot_options
 from ..data_sources import (
     DEFAULT_ACCEPTANCE_TABLE,
-    load_dataset_from_source,
+    load_dataset_with_offer_status,
 )
 from ..feature_config import DEFAULT_UI_FEATURE_CONFIG
 from ..formatting import prepare_bid_record
@@ -201,16 +201,24 @@ def _select_first_series(
 
 
 def load_acceptance_dataset(
-    config: str | Mapping[str, object], *, reload: bool = False
+    config: str | Mapping[str, object],
+    *,
+    cache_client: Optional[object] = None,
+    cache_prefix: str = "",
+    hour_timestamps: Optional[list[pd.Timestamp]] = None,
+    reload: bool = False,
 ) -> pd.DataFrame:
     """Load acceptance data from a file path or Redshift table."""
 
     if not config:
         raise ValueError("No acceptance dataset source provided.")
 
-    return load_dataset_from_source(
+    return load_dataset_with_offer_status(
         config,
         normalizer=_normalize_acceptance_dataset,
+        cache_client=cache_client,
+        cache_prefix=cache_prefix,
+        hour_timestamps=hour_timestamps,
         reload=reload,
     )
 
@@ -340,7 +348,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Output("acceptance-flight-number-dropdown", "value"),
         Input("acceptance-carrier-dropdown", "value"),
         Input("acceptance-selection-request-store", "data"),
-        State("acceptance-dataset-path-store", "data"),
+        Input("acceptance-dataset-path-store", "data"),
         State("acceptance-flight-number-dropdown", "value"),
     )
     def populate_flights(
@@ -372,7 +380,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Input("acceptance-flight-number-dropdown", "value"),
         Input("acceptance-selection-request-store", "data"),
         State("acceptance-carrier-dropdown", "value"),
-        State("acceptance-dataset-path-store", "data"),
+        Input("acceptance-dataset-path-store", "data"),
         State("acceptance-travel-date-dropdown", "value"),
     )
     def populate_travel_dates(
@@ -414,7 +422,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Input("acceptance-selection-request-store", "data"),
         State("acceptance-carrier-dropdown", "value"),
         State("acceptance-flight-number-dropdown", "value"),
-        State("acceptance-dataset-path-store", "data"),
+        Input("acceptance-dataset-path-store", "data"),
         State("acceptance-upgrade-dropdown", "value"),
     )
     def populate_upgrades(
@@ -451,7 +459,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         State("acceptance-carrier-dropdown", "value"),
         State("acceptance-flight-number-dropdown", "value"),
         State("acceptance-travel-date-dropdown", "value"),
-        State("acceptance-dataset-path-store", "data"),
+        Input("acceptance-dataset-path-store", "data"),
     )
     def populate_snapshots(
         upgrade: Optional[str],
@@ -530,6 +538,7 @@ def register_acceptance_callbacks(app: Dash) -> None:
         Output("acceptance-bid-table", "data"),
         Output("acceptance-bid-table", "style_data_conditional"),
         Output("acceptance-table-feedback", "children"),
+        Input("acceptance-dataset-path-store", "data"),
         Input("acceptance-snapshot-dropdown", "value"),
         Input("acceptance-snapshot-frequency-dropdown", "value"),
         Input("acceptance-chart-style-radio", "value"),
@@ -537,9 +546,9 @@ def register_acceptance_callbacks(app: Dash) -> None:
         State("acceptance-flight-number-dropdown", "value"),
         State("acceptance-travel-date-dropdown", "value"),
         State("acceptance-upgrade-dropdown", "value"),
-        State("acceptance-dataset-path-store", "data"),
     )
     def render_view(
+        dataset_config: Optional[object],
         snapshot_value: Optional[str],
         snapshot_frequency: Optional[int],
         chart_style: Optional[str],
@@ -547,7 +556,6 @@ def register_acceptance_callbacks(app: Dash) -> None:
         flight_number: Optional[str],
         travel_date: Optional[str],
         upgrade_type: Optional[str],
-        dataset_config: Optional[object],
     ):
         summary = _build_summary(carrier, flight_number, travel_date, upgrade_type)
         dataset_config = dataset_config or _default_acceptance_config()
