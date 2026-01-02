@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -12,6 +13,8 @@ import pyarrow.parquet as pq
 from pyarrow import fs as pyfs
 
 from ..data_sources import _list_remote_files, enrich_with_offer_status
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_THRESHOLD = 0.5
 HISTORY_DATE_COLUMN = "history_date"
@@ -269,10 +272,20 @@ def update_performance_history_from_source(
     cache_client: Optional[object] = None,
 ) -> Optional[pd.DataFrame]:
     if not source_uri:
+        logger.info("Performance history update skipped: source URI not configured.")
         return None
 
     refresh_days = max(int(refresh_days), 1)
     history_exists = _file_exists(history_uri)
+    logger.info(
+        "Starting performance history update.",
+        extra={
+            "history_uri": history_uri,
+            "source_uri": source_uri,
+            "refresh_days": refresh_days,
+            "history_exists": history_exists,
+        },
+    )
 
     if history_exists:
         existing = load_performance_history(history_uri)
@@ -287,10 +300,19 @@ def update_performance_history_from_source(
         refresh_start = None
 
     counts_frames: list[pd.DataFrame] = []
-    for file_path in _iter_source_files(source_uri):
+    source_files = _iter_source_files(source_uri)
+    logger.info(
+        "Resolved performance history source files.",
+        extra={"file_count": len(source_files)},
+    )
+    for file_path in source_files:
         try:
             frame = _read_source_file(file_path)
         except Exception:
+            logger.warning(
+                "Failed to read performance history source file.",
+                extra={"file_path": file_path},
+            )
             continue
 
         if refresh_start is not None and "accept_prob_timestamp" in frame.columns:
@@ -298,6 +320,10 @@ def update_performance_history_from_source(
             frame = frame.loc[timestamps.dt.normalize() >= refresh_start].copy()
 
         if frame.empty:
+            logger.info(
+                "Skipping performance history source file with no rows after filtering.",
+                extra={"file_path": file_path},
+            )
             continue
 
         hour_timestamps = _extract_hour_timestamps(frame)
@@ -310,18 +336,28 @@ def update_performance_history_from_source(
         counts = _compute_daily_counts(frame, threshold)
         if not counts.empty:
             counts_frames.append(counts)
+            logger.info(
+                "Aggregated performance history counts from source file.",
+                extra={"file_path": file_path, "row_count": len(counts)},
+            )
 
     if not counts_frames:
+        logger.info("No performance history counts produced from source files.")
         return existing if not existing.empty else None
 
     combined_counts = pd.concat(counts_frames, ignore_index=True)
     new_history = _history_from_counts(combined_counts, threshold)
 
     if new_history.empty:
+        logger.info("Computed performance history data is empty; skipping write.")
         return existing if not existing.empty else None
 
     if not history_exists or existing.empty or HISTORY_DATE_COLUMN not in existing.columns:
         _write_parquet(history_uri, new_history)
+        logger.info(
+            "Wrote new performance history file.",
+            extra={"history_uri": history_uri, "row_count": len(new_history)},
+        )
         return new_history
 
     refresh_start = (
@@ -330,6 +366,9 @@ def update_performance_history_from_source(
         else refresh_start
     )
     if refresh_start is None or pd.isna(refresh_start):
+        logger.info(
+            "Performance history refresh skipped: unable to resolve refresh start date."
+        )
         return existing
 
     retained = existing[existing[HISTORY_DATE_COLUMN] < refresh_start]
@@ -338,4 +377,12 @@ def update_performance_history_from_source(
         drop=True
     )
     _write_parquet(history_uri, combined)
+    logger.info(
+        "Updated performance history file.",
+        extra={
+            "history_uri": history_uri,
+            "row_count": len(combined),
+            "refresh_start": str(refresh_start),
+        },
+    )
     return combined
