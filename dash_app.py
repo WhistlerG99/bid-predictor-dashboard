@@ -8,7 +8,7 @@ from typing import Optional
 import io
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import mlflow
 import pandas as pd
 from dash import Dash, Input, Output, State, callback_context, dcc, html
@@ -363,6 +363,15 @@ def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> N
         )
     except Exception as exc:
         print(f"[Acceptance loader] Warning: Failed to populate internal cache: {exc}")
+
+
+def _build_acceptance_dataset_config(hours: int) -> dict:
+    return {
+        "source": "path",
+        "path": S3_DATASET_LISTING_URI,
+        "hours": hours,
+        "loaded_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _maybe_update_performance_history() -> None:
@@ -830,11 +839,7 @@ def create_app() -> Dash:
                 loader_status = (
                     f"Acceptance data loaded from hourly cache ({len(bucket_data):,} rows)."
                 )
-                dataset_config = {
-                    "source": "path",
-                    "path": S3_DATASET_LISTING_URI,
-                    "hours": hours,
-                }
+                dataset_config = _build_acceptance_dataset_config(hours)
                 _populate_acceptance_cache(bucket_data, dataset_config)
                 _maybe_update_performance_history()
                 return status, dataset_config, loader_status
@@ -866,11 +871,7 @@ def create_app() -> Dash:
                     loader_status = (
                         f"Acceptance data loaded from Redis cache ({len(dataset):,} rows)."
                     )
-                    dataset_config = {
-                        "source": "path",
-                        "path": S3_DATASET_LISTING_URI,
-                        "hours": hours,
-                    }
+                    dataset_config = _build_acceptance_dataset_config(hours)
                     # Populate internal cache so dropdowns work
                     _populate_acceptance_cache(dataset, dataset_config)
                     _maybe_update_performance_history()
@@ -936,11 +937,7 @@ def create_app() -> Dash:
                                             f"Acceptance data loaded from Redis cache (filtered from {larger_hours}h, "
                                             f"{len(filtered_dataset):,} rows)."
                                         )
-                                        dataset_config = {
-                                            "source": "path",
-                                            "path": S3_DATASET_LISTING_URI,
-                                            "hours": hours,
-                                        }
+                                        dataset_config = _build_acceptance_dataset_config(hours)
                                         # Populate internal cache so dropdowns work
                                         _populate_acceptance_cache(filtered_dataset, dataset_config)
                                         _maybe_update_performance_history()
@@ -984,11 +981,7 @@ def create_app() -> Dash:
             error_msg = f"Failed to list S3 files: {exc}"
             return error_msg, None, error_msg
 
-        dataset_config = {
-            "source": "path",
-            "path": S3_DATASET_LISTING_URI,
-            "hours": hours,
-        }
+        dataset_config = _build_acceptance_dataset_config(hours)
 
         try:
             dataset = load_acceptance_dataset(dataset_config, reload=True)
