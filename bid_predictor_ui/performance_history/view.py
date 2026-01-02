@@ -11,10 +11,14 @@ from plotly import graph_objects as go
 from .data import ALL_CARRIER_VALUE, HISTORY_DATE_COLUMN, load_performance_history
 from .layout import COUNT_OPTIONS, METRIC_OPTIONS
 
-PERFORMANCE_HISTORY_URI = os.getenv("PERFORMANCE_HISTORY_S3_URI", "")
-
 COUNT_VALUE_TO_LABEL = {option["value"]: option["label"] for option in COUNT_OPTIONS}
 METRIC_VALUE_TO_LABEL = {option["value"]: option["label"] for option in METRIC_OPTIONS}
+
+
+def _resolve_performance_history_uri(history_uri: Optional[str]) -> str:
+    if history_uri is not None:
+        return history_uri
+    return os.getenv("PERFORMANCE_HISTORY_S3_URI", "")
 
 
 def _empty_figure(message: str) -> go.Figure:
@@ -95,8 +99,11 @@ def _extract_carrier_options(history: pd.DataFrame) -> List[Dict[str, str]]:
     return options
 
 
-def register_performance_history_callbacks(app: Dash) -> None:
+def register_performance_history_callbacks(
+    app: Dash, history_uri: Optional[str] = None
+) -> None:
     """Register callbacks powering the performance history tab."""
+    resolved_history_uri = _resolve_performance_history_uri(history_uri)
 
     @callback(
         Output("performance-history-store", "data"),
@@ -106,11 +113,11 @@ def register_performance_history_callbacks(app: Dash) -> None:
     def load_performance_history_data(
         _: Optional[Dict[str, object]],
     ) -> Tuple[List[Dict[str, object]], str]:
-        if not PERFORMANCE_HISTORY_URI:
+        if not resolved_history_uri:
             return [], "PERFORMANCE_HISTORY_S3_URI is not configured."
 
         try:
-            history = load_performance_history(PERFORMANCE_HISTORY_URI)
+            history = load_performance_history(resolved_history_uri)
         except Exception as exc:  # pragma: no cover - user feedback
             return [], f"Failed to load performance history: {exc}"
 

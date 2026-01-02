@@ -691,7 +691,7 @@ def create_app() -> Dash:
     register_feature_sensitivity_callbacks(app)
     register_acceptance_callbacks(app)
     register_performance_callbacks(app)
-    register_performance_history_callbacks(app)
+    register_performance_history_callbacks(app, PERFORMANCE_HISTORY_S3_URI)
 
     # Start background hourly refresh thread
     if REDIS_URL and S3_DATASET_LISTING_URI:
