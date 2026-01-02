@@ -57,3 +57,34 @@ def test_update_performance_history_refreshes_recent_dates(tmp_path):
     assert updated is not None
     assert updated[history_data.HISTORY_DATE_COLUMN].nunique() == 2
     assert (updated[history_data.HISTORY_DATE_COLUMN] == pd.Timestamp("2024-01-02")).any()
+
+
+def test_update_performance_history_handles_timezone_aware_timestamps(tmp_path):
+    dataset = pd.DataFrame(
+        {
+            "accept_prob_timestamp": [
+                "2023-12-30T05:00:00+00:00",
+                "2024-01-02T07:00:00+00:00",
+            ],
+            "offer_status": ["TICKETED", "EXPIRED"],
+            "accept_prob": [0.9, 0.4],
+            "carrier_code": ["AA", "AA"],
+        }
+    )
+    history_path = tmp_path / "history.parquet"
+    source_dir = tmp_path / "sources"
+    source_dir.mkdir()
+
+    initial = history_data.compute_daily_performance_history(dataset.iloc[:1], threshold=0.5)
+    initial.to_parquet(history_path, index=False)
+    dataset.to_csv(source_dir / "recent.csv", index=False)
+
+    updated = history_data.update_performance_history_from_source(
+        str(history_path),
+        str(source_dir),
+        refresh_days=5,
+        threshold=0.5,
+    )
+
+    assert updated is not None
+    assert (updated[history_data.HISTORY_DATE_COLUMN] == pd.Timestamp("2024-01-02")).any()
