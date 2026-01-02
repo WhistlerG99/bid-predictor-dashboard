@@ -72,6 +72,11 @@ def _normalize_accept_probabilities(series: pd.Series) -> pd.Series:
     return numeric
 
 
+def _coerce_timestamps_to_utc_naive(series: pd.Series) -> pd.Series:
+    timestamps = pd.to_datetime(series, errors="coerce", utc=True)
+    return timestamps.dt.tz_convert(None)
+
+
 def _safe_ratio(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
     ratio = numerator / denominator.replace({0: np.nan})
     return ratio.where(np.isfinite(ratio))
@@ -149,8 +154,8 @@ def _compute_daily_counts(
     working = dataset.copy()
     working = working[working["offer_status"].isin(["TICKETED", "EXPIRED"])]
     working["accept_prob"] = _normalize_accept_probabilities(working["accept_prob"])
-    working["accept_prob_timestamp"] = pd.to_datetime(
-        working["accept_prob_timestamp"], errors="coerce"
+    working["accept_prob_timestamp"] = _coerce_timestamps_to_utc_naive(
+        working["accept_prob_timestamp"]
     )
     working[HISTORY_DATE_COLUMN] = working["accept_prob_timestamp"].dt.normalize()
     working = working.dropna(subset=[HISTORY_DATE_COLUMN, "accept_prob", "offer_status"])
@@ -223,7 +228,7 @@ def load_performance_history(history_uri: str) -> pd.DataFrame:
 def _extract_hour_timestamps(dataset: pd.DataFrame) -> list[pd.Timestamp]:
     if "accept_prob_timestamp" not in dataset.columns:
         return []
-    timestamps = pd.to_datetime(dataset["accept_prob_timestamp"], errors="coerce")
+    timestamps = _coerce_timestamps_to_utc_naive(dataset["accept_prob_timestamp"])
     return [
         ts.replace(minute=0, second=0, microsecond=0)
         for ts in timestamps.dropna().unique()
@@ -294,7 +299,7 @@ def update_performance_history_from_source(
             continue
 
         if refresh_start is not None and "accept_prob_timestamp" in frame.columns:
-            timestamps = pd.to_datetime(frame["accept_prob_timestamp"], errors="coerce")
+            timestamps = _coerce_timestamps_to_utc_naive(frame["accept_prob_timestamp"])
             frame = frame.loc[timestamps.dt.normalize() >= refresh_start].copy()
 
         if frame.empty:
