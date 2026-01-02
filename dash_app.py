@@ -39,6 +39,9 @@ from bid_predictor_ui.data_sources import (
     _filter_files_by_recent_hours,
     _list_remote_files,
 )
+from bid_predictor_ui.route_level_info import (
+    build_route_level_info_tab,register_route_level_info_callbacks
+)
 import bid_predictor_ui.data_sources as data_sources_module
 from bid_predictor_ui.acceptance_explorer.view import _normalize_acceptance_dataset
 
@@ -447,6 +450,8 @@ def _enrich_with_offer_status(dataset: pd.DataFrame, hour_timestamps: Optional[l
             if hour_timestamps:
                 most_recent_hour = max(hour_timestamps)
                 _cache_offer_statuses(most_recent_hour, fetched_statuses)
+                # for hour_ts in hour_timestamps:
+                #     _cache_offer_statuses(hour_ts, fetched_statuses)
     
     # Map offer_status to dataset
     dataset = dataset.copy()
@@ -602,6 +607,7 @@ def create_app() -> Dash:
                 value="acceptance",
                 children=[
                     build_acceptance_tab(),
+                    build_route_level_info_tab(),
                 ],
                 style={"marginTop": "1rem"},
             ),
@@ -614,6 +620,7 @@ def create_app() -> Dash:
     )
 
     register_acceptance_callbacks(app)
+    register_route_level_info_callbacks(app)
     
     # Start background hourly refresh thread
     if REDIS_URL and S3_DATASET_LISTING_URI:
