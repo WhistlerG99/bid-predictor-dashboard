@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from typing import List
 
 import pandas as pd
@@ -35,10 +35,15 @@ def _compute_window() -> tuple[datetime, datetime]:
     today - 5 days = anchor
     window = [anchor - 7 days, anchor]
     """
-    now = datetime.utcnow()
-    anchor = now - timedelta(days=5)
-    start = anchor - timedelta(days=7)
-    return start, anchor
+    today = datetime.utcnow().date()
+
+    anchor_day = today - timedelta(days=5)
+    start_day = anchor_day - timedelta(days=6)  # 7 days total
+
+    start_ts = datetime.combine(start_day, time.min)
+    end_ts = datetime.combine(anchor_day, time.max)
+
+    return start_ts, end_ts
 
 
 def _audit_combined_cache_key(start: datetime, end: datetime) -> str:

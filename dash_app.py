@@ -492,126 +492,7 @@ def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> N
 def create_app() -> Dash:
     app = Dash(__name__)
     app.layout = html.Div(
-        [
-            html.Div(
-                [
-                    html.H1(
-                        "Bid Predictor Playground",
-                        style={"margin": "0", "color": "#1b4965"},
-                    ),
-                    html.P(
-                        "Acceptance explorer",
-                        style={"margin": "0", "color": "#16324f"},
-                    ),
-                    html.Div(
-                        [
-                            html.Label(
-                                "Lookback (hours)",
-                                style={
-                                    "fontSize": "0.85rem",
-                                    "fontWeight": "600",
-                                    "marginRight": "0.5rem",
-                                },
-                            ),
-                            dcc.Input(
-                                id="acceptance-lookback-hours",
-                                type="number",
-                                min=1,
-                                step=1,
-                                value=DEFAULT_S3_LOOKBACK_HOURS,
-                                style={
-                                    "width": "5rem",
-                                    "fontSize": "0.85rem",
-                                },
-                            ),
-                            html.Button(
-                                "Apply",
-                                id="acceptance-lookback-apply",
-                                n_clicks=0,
-                                style={
-                                    "marginLeft": "0.75rem",
-                                    "padding": "0.25rem 0.75rem",
-                                    "fontSize": "0.8rem",
-                                    "borderRadius": "6px",
-                                    "border": "none",
-                                    "backgroundColor": "#1b4965",
-                                    "color": "white",
-                                    "cursor": "pointer",
-                                },
-                            ),
-                        ],
-                        style={
-                            "marginTop": "0.5rem",
-                            "display": "flex",
-                            "alignItems": "center",
-                        },
-                    ),
-                    html.Div(
-                        id="acceptance-dataset-status",
-                        style={
-                            "marginTop": "0.4rem",
-                            "fontSize": "0.85rem",
-                            "color": "#333333",
-                        },
-                    ),
-                    dcc.Loading(
-                        id="acceptance-loader",
-                        type="circle",
-                        children=html.Div(
-                            id="acceptance-loader-status",
-                            style={
-                                "marginTop": "0.25rem",
-                                "fontSize": "0.85rem",
-                                "color": "#555555",
-                            },
-                        ),
-                    ),
-                ],
-                style={
-                    "background": "linear-gradient(90deg, #e0fbfc 0%, #c2dfe3 100%)",
-                    "padding": "1.5rem",
-                    "borderRadius": "12px",
-                    "boxShadow": "0 4px 12px rgba(0, 0, 0, 0.1)",
-                    "marginBottom": "1.5rem",
-                },
-            ),
-            dcc.Store(id="acceptance-dataset-path-store"),
-            dcc.Store(id="model-uri-store"),
-            dcc.Store(id="bid-records-store"),
-            dcc.Store(id="snapshot-meta-store"),
-            dcc.Store(id="prediction-store"),
-            dcc.Store(id="removed-bids-store"),
-            dcc.Store(id="baseline-bid-records-store"),
-            dcc.Store(id="baseline-snapshot-meta-store"),
-            dcc.Store(id="scenario-records-store"),
-            dcc.Store(id="scenario-original-records-store"),
-            dcc.Store(id="scenario-removed-bids-store"),
-            dcc.Store(id="snapshot-selection-request-store"),
-            dcc.Store(id="selection-history-store", data=[]),
-            dcc.Store(id="scenario-selection-request-store"),
-            dcc.Store(id="scenario-selection-history-store", data=[]),
-            dcc.Store(id="acceptance-selection-request-store"),
-            dcc.Store(id="acceptance-selection-history-store", data=[]),
-            dcc.Store(
-                id="feature-config-store",
-                data=deepcopy(DEFAULT_UI_FEATURE_CONFIG),
-            ),
-            dcc.Interval(
-                id="acceptance-loader-interval",
-                interval=500,
-                n_intervals=0,
-                max_intervals=1,
-            ),
-            dcc.Tabs(
-                id="main-tabs",
-                value="acceptance",
-                children=[
-                    build_acceptance_tab(),
-                    build_route_level_info_tab(),
-                ],
-                style={"marginTop": "1rem"},
-            ),
-        ],
+        build_route_level_info_tab(),
         style={
             "fontFamily": "'Segoe UI', sans-serif",
             "backgroundColor": "#fafafa",
@@ -619,290 +500,290 @@ def create_app() -> Dash:
         },
     )
 
-    register_acceptance_callbacks(app)
+    # register_acceptance_callbacks(app)
     register_route_level_info_callbacks(app)
     
     # Start background hourly refresh thread
-    if REDIS_URL and S3_DATASET_LISTING_URI:
-        refresh_thread = threading.Thread(
-            target=_background_refresh_worker,
-            daemon=True,
-            name="HourlyCacheRefresh"
-        )
-        refresh_thread.start()
-        print(
-            f"[Hourly refresh] Background refresh thread started. "
-            f"Will refresh {ROLLING_WINDOW_HOURS}h rolling window every hour."
-        )
+    # if REDIS_URL and S3_DATASET_LISTING_URI:
+    #     refresh_thread = threading.Thread(
+    #         target=_background_refresh_worker,
+    #         daemon=True,
+    #         name="HourlyCacheRefresh"
+    #     )
+    #     refresh_thread.start()
+    #     print(
+    #         f"[Hourly refresh] Background refresh thread started. "
+    #         f"Will refresh {ROLLING_WINDOW_HOURS}h rolling window every hour."
+    #     )
 
-    # Callbacks -----------------------------------------------------------------------------
+    # # Callbacks -----------------------------------------------------------------------------
 
-    @app.callback(
-        Output("acceptance-dataset-status", "children"),
-        Output("acceptance-dataset-path-store", "data"),
-        Output("acceptance-loader-status", "children"),
-        Input("acceptance-loader-interval", "n_intervals"),
-        Input("acceptance-lookback-apply", "n_clicks"),
-        State("acceptance-lookback-hours", "value"),
-        prevent_initial_call=False,
-    )
-    def load_acceptance_dataset_on_startup(
-        n_intervals: int,
-        apply_clicks: int,
-        lookback_value: Optional[int],
-    ):
-        if not S3_DATASET_LISTING_URI:
-            message = "S3_DATASET_LISTING_URI is not configured."
-            return message, None, message
+    # @app.callback(
+    #     Output("acceptance-dataset-status", "children"),
+    #     Output("acceptance-dataset-path-store", "data"),
+    #     Output("acceptance-loader-status", "children"),
+    #     Input("acceptance-loader-interval", "n_intervals"),
+    #     Input("acceptance-lookback-apply", "n_clicks"),
+    #     State("acceptance-lookback-hours", "value"),
+    #     prevent_initial_call=False,
+    # )
+    # def load_acceptance_dataset_on_startup(
+    #     n_intervals: int,
+    #     apply_clicks: int,
+    #     lookback_value: Optional[int],
+    # ):
+    #     if not S3_DATASET_LISTING_URI:
+    #         message = "S3_DATASET_LISTING_URI is not configured."
+    #         return message, None, message
 
-        # Resolve lookback window in hours from user input
-        try:
-            hours = int(lookback_value) if lookback_value is not None else DEFAULT_S3_LOOKBACK_HOURS
-        except (TypeError, ValueError):
-            hours = DEFAULT_S3_LOOKBACK_HOURS
-        if hours <= 0:
-            hours = DEFAULT_S3_LOOKBACK_HOURS
+    #     # Resolve lookback window in hours from user input
+    #     try:
+    #         hours = int(lookback_value) if lookback_value is not None else DEFAULT_S3_LOOKBACK_HOURS
+    #     except (TypeError, ValueError):
+    #         hours = DEFAULT_S3_LOOKBACK_HOURS
+    #     if hours <= 0:
+    #         hours = DEFAULT_S3_LOOKBACK_HOURS
 
-        # Determine trigger source: initial interval vs user "Apply" click.
-        trigger = ""
-        if callback_context.triggered:
-            trigger = callback_context.triggered[0]["prop_id"].split(".")[0]
+    #     # Determine trigger source: initial interval vs user "Apply" click.
+    #     trigger = ""
+    #     if callback_context.triggered:
+    #         trigger = callback_context.triggered[0]["prop_id"].split(".")[0]
 
-        cache_client = _get_redis_client()
+    #     cache_client = _get_redis_client()
         
-        # First, try loading from hour buckets (new rolling window cache)
-        if hours <= ROLLING_WINDOW_HOURS:
-            bucket_data = _load_from_hour_buckets(hours)
-            if bucket_data is not None:
-                # Successfully loaded from hour buckets
-                print(
-                    f"[Acceptance loader] Loaded from hour buckets for {hours}h window "
-                    f"({len(bucket_data):,} rows)."
-                )
-                status = (
-                    f"Loaded acceptance dataset from cache (last {hours} hours) "
-                    f"with {len(bucket_data):,} rows."
-                )
-                loader_status = (
-                    f"Acceptance data loaded from hourly cache ({len(bucket_data):,} rows)."
-                )
-                dataset_config = {
-                    "source": "path",
-                    "path": S3_DATASET_LISTING_URI,
-                    "hours": hours,
-                }
-                _populate_acceptance_cache(bucket_data, dataset_config)
-                return status, dataset_config, loader_status
+    #     # First, try loading from hour buckets (new rolling window cache)
+    #     if hours <= ROLLING_WINDOW_HOURS:
+    #         bucket_data = _load_from_hour_buckets(hours)
+    #         if bucket_data is not None:
+    #             # Successfully loaded from hour buckets
+    #             print(
+    #                 f"[Acceptance loader] Loaded from hour buckets for {hours}h window "
+    #                 f"({len(bucket_data):,} rows)."
+    #             )
+    #             status = (
+    #                 f"Loaded acceptance dataset from cache (last {hours} hours) "
+    #                 f"with {len(bucket_data):,} rows."
+    #             )
+    #             loader_status = (
+    #                 f"Acceptance data loaded from hourly cache ({len(bucket_data):,} rows)."
+    #             )
+    #             dataset_config = {
+    #                 "source": "path",
+    #                 "path": S3_DATASET_LISTING_URI,
+    #                 "hours": hours,
+    #             }
+    #             _populate_acceptance_cache(bucket_data, dataset_config)
+    #             return status, dataset_config, loader_status
         
-        # Fall back to legacy full-window cache or S3
-        cache_key = _acceptance_cache_key(hours)
+    #     # Fall back to legacy full-window cache or S3
+    #     cache_key = _acceptance_cache_key(hours)
 
-        # Try Redis cache - exact match for requested hours (legacy)
-        if cache_client is not None:
-            cached = cache_client.get(cache_key)
-            if cached:
-                try:
-                    buffer = io.BytesIO(cached)
-                    dataset = pd.read_parquet(buffer)
-                    # Enrich with offer_status
-                    dataset = _enrich_with_offer_status(dataset)
-                    print(
-                        f"[Acceptance loader] Using cached dataset from Redis for "
-                        f"last {hours} hours ({len(dataset):,} rows)."
-                    )
-                    status = (
-                        f"Loaded acceptance dataset from cache (last {hours} hours) "
-                        f"with {len(dataset):,} rows."
-                    )
-                    loader_status = (
-                        f"Acceptance data loaded from Redis cache ({len(dataset):,} rows)."
-                    )
-                    dataset_config = {
-                        "source": "path",
-                        "path": S3_DATASET_LISTING_URI,
-                        "hours": hours,
-                    }
-                    # Populate internal cache so dropdowns work
-                    _populate_acceptance_cache(dataset, dataset_config)
-                    return status, dataset_config, loader_status
-                except Exception as exc:  # pragma: no cover - cache decode issues
-                    print(f"[Acceptance loader] Failed to read cached dataset: {exc}")
+    #     # Try Redis cache - exact match for requested hours (legacy)
+    #     if cache_client is not None:
+    #         cached = cache_client.get(cache_key)
+    #         if cached:
+    #             try:
+    #                 buffer = io.BytesIO(cached)
+    #                 dataset = pd.read_parquet(buffer)
+    #                 # Enrich with offer_status
+    #                 dataset = _enrich_with_offer_status(dataset)
+    #                 print(
+    #                     f"[Acceptance loader] Using cached dataset from Redis for "
+    #                     f"last {hours} hours ({len(dataset):,} rows)."
+    #                 )
+    #                 status = (
+    #                     f"Loaded acceptance dataset from cache (last {hours} hours) "
+    #                     f"with {len(dataset):,} rows."
+    #                 )
+    #                 loader_status = (
+    #                     f"Acceptance data loaded from Redis cache ({len(dataset):,} rows)."
+    #                 )
+    #                 dataset_config = {
+    #                     "source": "path",
+    #                     "path": S3_DATASET_LISTING_URI,
+    #                     "hours": hours,
+    #                 }
+    #                 # Populate internal cache so dropdowns work
+    #                 _populate_acceptance_cache(dataset, dataset_config)
+    #                 return status, dataset_config, loader_status
+    #             except Exception as exc:  # pragma: no cover - cache decode issues
+    #                 print(f"[Acceptance loader] Failed to read cached dataset: {exc}")
             
-            # Optimization: Check if we have a larger cached window that we can reuse
-            # Try common larger windows in ascending order (e.g., if requesting 20h, check 24h, 48h, etc.)
-            larger_windows = sorted([24, 48, 72, 168])  # 1 day, 2 days, 3 days, 1 week
-            for larger_hours in larger_windows:
-                if larger_hours > hours:
-                    larger_cache_key = _acceptance_cache_key(larger_hours)
-                    larger_cached = cache_client.get(larger_cache_key)
-                    if larger_cached:
-                        try:
-                            buffer = io.BytesIO(larger_cached)
-                            larger_dataset = pd.read_parquet(buffer)
+    #         # Optimization: Check if we have a larger cached window that we can reuse
+    #         # Try common larger windows in ascending order (e.g., if requesting 20h, check 24h, 48h, etc.)
+    #         larger_windows = sorted([24, 48, 72, 168])  # 1 day, 2 days, 3 days, 1 week
+    #         for larger_hours in larger_windows:
+    #             if larger_hours > hours:
+    #                 larger_cache_key = _acceptance_cache_key(larger_hours)
+    #                 larger_cached = cache_client.get(larger_cache_key)
+    #                 if larger_cached:
+    #                     try:
+    #                         buffer = io.BytesIO(larger_cached)
+    #                         larger_dataset = pd.read_parquet(buffer)
                             
-                            # Check if dataset has timestamp columns we can filter by
-                            timestamp_cols = ["accept_prob_timestamp", "current_timestamp", "created_timestamp"]
-                            timestamp_col = next((col for col in timestamp_cols if col in larger_dataset.columns), None)
+    #                         # Check if dataset has timestamp columns we can filter by
+    #                         timestamp_cols = ["accept_prob_timestamp", "current_timestamp", "created_timestamp"]
+    #                         timestamp_col = next((col for col in timestamp_cols if col in larger_dataset.columns), None)
                             
-                            if timestamp_col:
-                                # Filter to requested hours window
-                                timestamps = pd.to_datetime(larger_dataset[timestamp_col], errors="coerce")
-                                if not timestamps.isna().all():
-                                    latest_time = timestamps.max()
-                                    cutoff_time = latest_time - pd.Timedelta(hours=hours)
-                                    filtered_dataset = larger_dataset[timestamps >= cutoff_time].copy()
+    #                         if timestamp_col:
+    #                             # Filter to requested hours window
+    #                             timestamps = pd.to_datetime(larger_dataset[timestamp_col], errors="coerce")
+    #                             if not timestamps.isna().all():
+    #                                 latest_time = timestamps.max()
+    #                                 cutoff_time = latest_time - pd.Timedelta(hours=hours)
+    #                                 filtered_dataset = larger_dataset[timestamps >= cutoff_time].copy()
                                     
-                                    if len(filtered_dataset) > 0:
-                                        print(
-                                            f"[Acceptance loader] Reusing cached {larger_hours}h dataset, "
-                                            f"filtered to {hours}h ({len(filtered_dataset):,} rows from {len(larger_dataset):,})."
-                                        )
+    #                                 if len(filtered_dataset) > 0:
+    #                                     print(
+    #                                         f"[Acceptance loader] Reusing cached {larger_hours}h dataset, "
+    #                                         f"filtered to {hours}h ({len(filtered_dataset):,} rows from {len(larger_dataset):,})."
+    #                                     )
                                         
-                                        # Cache the filtered result for future use
-                                        try:
-                                            filter_buffer = io.BytesIO()
-                                            filtered_dataset.to_parquet(filter_buffer, index=False)
-                                            ttl_seconds = max(hours, 1) * 3600
-                                            cache_client.setex(cache_key, ttl_seconds, filter_buffer.getvalue())
-                                            print(
-                                                f"[Acceptance loader] Cached filtered dataset in Redis for {hours} hours "
-                                                f"(TTL {ttl_seconds} seconds)."
-                                            )
-                                        except Exception as exc:
-                                            print(f"[Acceptance loader] Failed to cache filtered dataset: {exc}")
+    #                                     # Cache the filtered result for future use
+    #                                     try:
+    #                                         filter_buffer = io.BytesIO()
+    #                                         filtered_dataset.to_parquet(filter_buffer, index=False)
+    #                                         ttl_seconds = max(hours, 1) * 3600
+    #                                         cache_client.setex(cache_key, ttl_seconds, filter_buffer.getvalue())
+    #                                         print(
+    #                                             f"[Acceptance loader] Cached filtered dataset in Redis for {hours} hours "
+    #                                             f"(TTL {ttl_seconds} seconds)."
+    #                                         )
+    #                                     except Exception as exc:
+    #                                         print(f"[Acceptance loader] Failed to cache filtered dataset: {exc}")
                                         
-                                        # Enrich with offer_status
-                                        filtered_dataset = _enrich_with_offer_status(filtered_dataset)
+    #                                     # Enrich with offer_status
+    #                                     filtered_dataset = _enrich_with_offer_status(filtered_dataset)
                                         
-                                        status = (
-                                            f"Loaded acceptance dataset from cache (filtered from {larger_hours}h to {hours}h) "
-                                            f"with {len(filtered_dataset):,} rows."
-                                        )
-                                        loader_status = (
-                                            f"Acceptance data loaded from Redis cache (filtered from {larger_hours}h, "
-                                            f"{len(filtered_dataset):,} rows)."
-                                        )
-                                        dataset_config = {
-                                            "source": "path",
-                                            "path": S3_DATASET_LISTING_URI,
-                                            "hours": hours,
-                                        }
-                                        # Populate internal cache so dropdowns work
-                                        _populate_acceptance_cache(filtered_dataset, dataset_config)
-                                        return status, dataset_config, loader_status
-                                    else:
-                                        print(
-                                            f"[Acceptance loader] Cached {larger_hours}h dataset filtered to empty "
-                                            f"for {hours}h window, will fetch from S3."
-                                        )
-                                else:
-                                    print(
-                                        f"[Acceptance loader] Cached {larger_hours}h dataset has no valid timestamps, "
-                                        f"will fetch from S3."
-                                    )
-                            else:
-                                print(
-                                    f"[Acceptance loader] Cached {larger_hours}h dataset has no timestamp columns, "
-                                    f"will fetch from S3."
-                                )
-                        except Exception as exc:
-                            print(f"[Acceptance loader] Failed to reuse larger cached dataset ({larger_hours}h): {exc}")
-                            continue
+    #                                     status = (
+    #                                         f"Loaded acceptance dataset from cache (filtered from {larger_hours}h to {hours}h) "
+    #                                         f"with {len(filtered_dataset):,} rows."
+    #                                     )
+    #                                     loader_status = (
+    #                                         f"Acceptance data loaded from Redis cache (filtered from {larger_hours}h, "
+    #                                         f"{len(filtered_dataset):,} rows)."
+    #                                     )
+    #                                     dataset_config = {
+    #                                         "source": "path",
+    #                                         "path": S3_DATASET_LISTING_URI,
+    #                                         "hours": hours,
+    #                                     }
+    #                                     # Populate internal cache so dropdowns work
+    #                                     _populate_acceptance_cache(filtered_dataset, dataset_config)
+    #                                     return status, dataset_config, loader_status
+    #                                 else:
+    #                                     print(
+    #                                         f"[Acceptance loader] Cached {larger_hours}h dataset filtered to empty "
+    #                                         f"for {hours}h window, will fetch from S3."
+    #                                     )
+    #                             else:
+    #                                 print(
+    #                                     f"[Acceptance loader] Cached {larger_hours}h dataset has no valid timestamps, "
+    #                                     f"will fetch from S3."
+    #                                 )
+    #                         else:
+    #                             print(
+    #                                 f"[Acceptance loader] Cached {larger_hours}h dataset has no timestamp columns, "
+    #                                 f"will fetch from S3."
+    #                             )
+    #                     except Exception as exc:
+    #                         print(f"[Acceptance loader] Failed to reuse larger cached dataset ({larger_hours}h): {exc}")
+    #                         continue
 
-        # No cache hit – load from S3 and populate cache
-        print(
-            f"[Acceptance loader] No cache found for {hours}h window. "
-            f"Fetching from S3 (each lookback window is cached separately)."
-        )
-        try:
-            filesystem = pyfs.S3FileSystem()
-            all_files = _list_remote_files(filesystem, S3_DATASET_LISTING_URI)
-            filtered_files = _filter_files_by_recent_hours(all_files, hours)
+    #     # No cache hit – load from S3 and populate cache
+    #     print(
+    #         f"[Acceptance loader] No cache found for {hours}h window. "
+    #         f"Fetching from S3 (each lookback window is cached separately)."
+    #     )
+    #     try:
+    #         filesystem = pyfs.S3FileSystem()
+    #         all_files = _list_remote_files(filesystem, S3_DATASET_LISTING_URI)
+    #         filtered_files = _filter_files_by_recent_hours(all_files, hours)
 
-            print(
-                f"[Acceptance loader] Found {len(filtered_files)} files under "
-                f"{S3_DATASET_LISTING_URI} within last {hours} hours."
-            )
-            for path in filtered_files:
-                print(f"[Acceptance loader] Using file: s3://{path}")
-        except Exception as exc:
-            error_msg = f"Failed to list S3 files: {exc}"
-            return error_msg, None, error_msg
+    #         print(
+    #             f"[Acceptance loader] Found {len(filtered_files)} files under "
+    #             f"{S3_DATASET_LISTING_URI} within last {hours} hours."
+    #         )
+    #         for path in filtered_files:
+    #             print(f"[Acceptance loader] Using file: s3://{path}")
+    #     except Exception as exc:
+    #         error_msg = f"Failed to list S3 files: {exc}"
+    #         return error_msg, None, error_msg
 
-        dataset_config = {
-            "source": "path",
-            "path": S3_DATASET_LISTING_URI,
-            "hours": hours,
-        }
+    #     dataset_config = {
+    #         "source": "path",
+    #         "path": S3_DATASET_LISTING_URI,
+    #         "hours": hours,
+    #     }
 
-        try:
-            dataset = load_acceptance_dataset(dataset_config, reload=True)
-            # Enrich with offer_status
-            hour_buckets = _get_hour_buckets_for_window(hours) if hours <= ROLLING_WINDOW_HOURS else []
-            dataset = _enrich_with_offer_status(dataset, hour_buckets if hour_buckets else None)
-        except Exception as exc:  # pragma: no cover - user feedback
-            error_msg = f"Failed to load acceptance dataset: {exc}"
-            return error_msg, None, error_msg
+    #     try:
+    #         dataset = load_acceptance_dataset(dataset_config, reload=True)
+    #         # Enrich with offer_status
+    #         hour_buckets = _get_hour_buckets_for_window(hours) if hours <= ROLLING_WINDOW_HOURS else []
+    #         dataset = _enrich_with_offer_status(dataset, hour_buckets if hour_buckets else None)
+    #     except Exception as exc:  # pragma: no cover - user feedback
+    #         error_msg = f"Failed to load acceptance dataset: {exc}"
+    #         return error_msg, None, error_msg
 
-        # Write to Redis cache with TTL equal to hours window (in seconds)
-        if cache_client is not None:
-            try:
-                buffer = io.BytesIO()
-                dataset.to_parquet(buffer, index=False)
-                ttl_seconds = 7200
-                cache_client.setex(cache_key, ttl_seconds, buffer.getvalue())
-                print(
-                    f"[Acceptance loader] Cached dataset in Redis for {hours} hours "
-                    f"(TTL {ttl_seconds} seconds, {len(dataset):,} rows)."
-                )
-            except Exception as exc:  # pragma: no cover - cache write issues
-                print(f"[Acceptance loader] Failed to cache dataset in Redis: {exc}")
+    #     # Write to Redis cache with TTL equal to hours window (in seconds)
+    #     if cache_client is not None:
+    #         try:
+    #             buffer = io.BytesIO()
+    #             dataset.to_parquet(buffer, index=False)
+    #             ttl_seconds = 7200
+    #             cache_client.setex(cache_key, ttl_seconds, buffer.getvalue())
+    #             print(
+    #                 f"[Acceptance loader] Cached dataset in Redis for {hours} hours "
+    #                 f"(TTL {ttl_seconds} seconds, {len(dataset):,} rows)."
+    #             )
+    #         except Exception as exc:  # pragma: no cover - cache write issues
+    #             print(f"[Acceptance loader] Failed to cache dataset in Redis: {exc}")
             
-            # Also populate hour buckets if within rolling window
-            if hours <= ROLLING_WINDOW_HOURS and "accept_prob_timestamp" in dataset.columns:
-                try:
-                    timestamps = pd.to_datetime(dataset["accept_prob_timestamp"], errors="coerce")
-                    required_buckets = _get_hour_buckets_for_window(hours)
+    #         # Also populate hour buckets if within rolling window
+    #         if hours <= ROLLING_WINDOW_HOURS and "accept_prob_timestamp" in dataset.columns:
+    #             try:
+    #                 timestamps = pd.to_datetime(dataset["accept_prob_timestamp"], errors="coerce")
+    #                 required_buckets = _get_hour_buckets_for_window(hours)
                     
-                    for hour_ts in required_buckets:
-                        hour_start = hour_ts
-                        hour_end = hour_ts + pd.Timedelta(hours=1)
-                        hour_mask = (timestamps >= hour_start) & (timestamps < hour_end)
-                        hour_data = dataset[hour_mask].copy()
+    #                 for hour_ts in required_buckets:
+    #                     hour_start = hour_ts
+    #                     hour_end = hour_ts + pd.Timedelta(hours=1)
+    #                     hour_mask = (timestamps >= hour_start) & (timestamps < hour_end)
+    #                     hour_data = dataset[hour_mask].copy()
                         
-                        if not hour_data.empty:
-                            bucket_key = _hour_bucket_cache_key(hour_ts)
-                            bucket_buffer = io.BytesIO()
-                            hour_data.to_parquet(bucket_buffer, index=False)
-                            cache_client.setex(bucket_key, 7200, bucket_buffer.getvalue())
-                            print(
-                                f"[Acceptance loader] Populated hour bucket "
-                                f"{hour_ts.strftime('%Y-%m-%d %H:00')} ({len(hour_data):,} rows)."
-                            )
+    #                     if not hour_data.empty:
+    #                         bucket_key = _hour_bucket_cache_key(hour_ts)
+    #                         bucket_buffer = io.BytesIO()
+    #                         hour_data.to_parquet(bucket_buffer, index=False)
+    #                         cache_client.setex(bucket_key, 7200, bucket_buffer.getvalue())
+    #                         print(
+    #                             f"[Acceptance loader] Populated hour bucket "
+    #                             f"{hour_ts.strftime('%Y-%m-%d %H:00')} ({len(hour_data):,} rows)."
+    #                         )
                             
-                            # Also cache offer_status for this hour if we have offer_ids
-                            if "offer_id" in hour_data.columns and "offer_status" in hour_data.columns:
-                                offer_statuses = dict(
-                                    zip(
-                                        hour_data["offer_id"].astype(str),
-                                        hour_data["offer_status"]
-                                    )
-                                )
-                                _cache_offer_statuses(hour_ts, offer_statuses)
-                except Exception as exc:
-                    print(f"[Acceptance loader] Failed to populate hour buckets: {exc}")
+    #                         # Also cache offer_status for this hour if we have offer_ids
+    #                         if "offer_id" in hour_data.columns and "offer_status" in hour_data.columns:
+    #                             offer_statuses = dict(
+    #                                 zip(
+    #                                     hour_data["offer_id"].astype(str),
+    #                                     hour_data["offer_status"]
+    #                                 )
+    #                             )
+    #                             _cache_offer_statuses(hour_ts, offer_statuses)
+    #             except Exception as exc:
+    #                 print(f"[Acceptance loader] Failed to populate hour buckets: {exc}")
 
-        file_count = len(filtered_files)
-        status = (
-            f"Loaded acceptance dataset from last {hours} hours "
-            f"with {len(dataset):,} rows."
-        )
-        loader_status = (
-            f"Acceptance data loaded from S3 ({file_count} files, {len(dataset):,} rows)."
-        )
-        # Populate internal cache so dropdowns work
-        _populate_acceptance_cache(dataset, dataset_config)
-        return status, dataset_config, loader_status
+    #     file_count = len(filtered_files)
+    #     status = (
+    #         f"Loaded acceptance dataset from last {hours} hours "
+    #         f"with {len(dataset):,} rows."
+    #     )
+    #     loader_status = (
+    #         f"Acceptance data loaded from S3 ({file_count} files, {len(dataset):,} rows)."
+    #     )
+    #     # Populate internal cache so dropdowns work
+    #     _populate_acceptance_cache(dataset, dataset_config)
+    #     return status, dataset_config, loader_status
 
     return app
 

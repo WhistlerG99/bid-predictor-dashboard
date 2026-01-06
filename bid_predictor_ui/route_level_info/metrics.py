@@ -27,9 +27,13 @@ def compute_horizon_metrics(df: pd.DataFrame, threshold: float) -> dict:
         hdf = _select_prediction_for_horizon(df, hours)
         if hdf.empty:
             results[label] = {
-                "false_negatives": 0,
-                "accuracy": 0.0,
+                "num_wrongly_expired": 0,
+                # "accuracy": 0.0,
                 "expiry_horizon": 0,
+                "percent_wrongly_expired": 0.0,
+                "negative_precision": 0.0,
+                "score": 0,
+                "negative_recall": 0.0,
             }
             continue
 
@@ -45,17 +49,42 @@ def compute_horizon_metrics(df: pd.DataFrame, threshold: float) -> dict:
                .last()
         )
 
-        false_negatives = (hdf["predicted_expired"] & hdf["actual_ticketed"]).sum()
+        num_model_expired = int(hdf["predicted_expired"].sum())
+        # num_wrongly_expired = int(hdf["wrongly_expired"].sum())
+        num_wrongly_expired = (hdf["predicted_expired"] & hdf["actual_ticketed"]).sum()
 
-        TP = (~hdf["predicted_expired"] & hdf["actual_ticketed"]).sum()
-        TN = (hdf["predicted_expired"] & hdf["actual_expired"]).sum()
-        total = len(hdf)
-        accuracy = ((TP + TN) / total * 100) if total else 0.0
+        percent_wrongly_expired = (
+            round(num_wrongly_expired / num_model_expired * 100, 2)
+            if num_model_expired > 0
+            else 0.0
+        )
+
+        negative_precision = 1 - (num_wrongly_expired / num_model_expired) if num_model_expired > 0 else 0.0
+
+        model_and_actual_expired = hdf["predicted_expired"] & hdf["actual_expired"]
+
+        negative_recall = (
+            model_and_actual_expired.sum() / hdf["actual_expired"].sum()
+            if hdf["actual_expired"].sum() > 0
+            else 0.0
+        )
+
+        score = num_model_expired - num_wrongly_expired - (num_wrongly_expired*10)
+        
+        # TP = (~hdf["predicted_expired"] & hdf["actual_ticketed"]).sum()
+        # TN = (hdf["predicted_expired"] & hdf["actual_expired"]).sum()
+        # total = len(hdf)
+        # accuracy = ((TP + TN) / total * 100) if total else 0.0
 
         results[label] = {
-            "false_negatives": int(false_negatives),
-            "accuracy": round(accuracy, 2),
+            # "false_negatives": int(false_negatives),
+            # "accuracy": round(accuracy, 2),
             "expiry_horizon": int(hdf["predicted_expired"].sum()),
+            "num_wrongly_expired": int(num_wrongly_expired),
+            "percent_wrongly_expired": percent_wrongly_expired,
+            "negative_precision": round(negative_precision, 3),
+            "negative_recall": round(negative_recall, 3),
+            "score": int(score),
         }
 
     return results

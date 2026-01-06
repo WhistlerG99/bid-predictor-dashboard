@@ -105,16 +105,36 @@ def register_route_level_info_callbacks(app):
                     "accepted": int(accepted_count),
                     "expiry": int(expiry_count),
 
-                    "false_negatives_72h": horizon_metrics["72h"]["false_negatives"],
-                    "false_negatives_48h": horizon_metrics["48h"]["false_negatives"],
-                    "false_negatives_24h": horizon_metrics["24h"]["false_negatives"],
+                    # "false_negatives_72h": horizon_metrics["72h"]["false_negatives"],
+                    # "false_negatives_48h": horizon_metrics["48h"]["false_negatives"],
+                    # "false_negatives_24h": horizon_metrics["24h"]["false_negatives"],
 
-                    "accuracy_rate_72h": horizon_metrics["72h"]["accuracy"],
-                    "accuracy_rate_48h": horizon_metrics["48h"]["accuracy"],
-                    "accuracy_rate_24h": horizon_metrics["24h"]["accuracy"],
+                    # "accuracy_rate_72h": horizon_metrics["72h"]["accuracy"],
+                    # "accuracy_rate_48h": horizon_metrics["48h"]["accuracy"],
+                    # "accuracy_rate_24h": horizon_metrics["24h"]["accuracy"],
 
+                    "expiry_72h": horizon_metrics["72h"]["expiry_horizon"],
                     "expiry_48h": horizon_metrics["48h"]["expiry_horizon"],
                     "expiry_24h": horizon_metrics["24h"]["expiry_horizon"],
+
+                    "num_wrongly_expired_72h": horizon_metrics["72h"]["num_wrongly_expired"],
+                    "percent_wrongly_expired_72h": horizon_metrics["72h"]["percent_wrongly_expired"],
+                    "num_wrongly_expired_48h": horizon_metrics["48h"]["num_wrongly_expired"],
+                    "percent_wrongly_expired_48h": horizon_metrics["48h"]["percent_wrongly_expired"],
+                    "num_wrongly_expired_24h": horizon_metrics["24h"]["num_wrongly_expired"],
+                    "percent_wrongly_expired_24h": horizon_metrics["24h"]["percent_wrongly_expired"],
+
+                    "negative_precision_72h": horizon_metrics["72h"]["negative_precision"],
+                    "negative_precision_48h": horizon_metrics["48h"]["negative_precision"],
+                    "negative_precision_24h": horizon_metrics["24h"]["negative_precision"],
+
+                    "negative_recall_72h": horizon_metrics["72h"]["negative_recall"],
+                    "negative_recall_48h": horizon_metrics["48h"]["negative_recall"],
+                    "negative_recall_24h": horizon_metrics["24h"]["negative_recall"],
+
+                    "score_72h": horizon_metrics["72h"]["score"],
+                    "score_48h": horizon_metrics["48h"]["score"],
+                    "score_24h": horizon_metrics["24h"]["score"],
                 }
             )
 
