@@ -324,6 +324,43 @@ def load_dataset_from_source(
     return data
 
 
+def load_dataset_with_offer_status(
+    config: str | Mapping[str, object],
+    *,
+    normalizer: Optional[Callable[[pd.DataFrame], pd.DataFrame]] = None,
+    cache_client: Optional[object] = None,
+    cache_prefix: str = "",
+    hour_timestamps: Optional[list[pd.Timestamp]] = None,
+    reload: bool = False,
+    prefer_existing_status: bool = True,
+) -> pd.DataFrame:
+    """Load dataset and enrich offer_status only when needed."""
+
+    if normalizer and not reload:
+        normalized_config = _normalize_config(config)
+        cached_key = _cache_key(normalized_config, normalizer)
+        if cached_key in _DATA_CACHE:
+            return _DATA_CACHE[cached_key]
+
+    dataset = load_dataset_from_source(config, normalizer=None, reload=reload)
+    has_offer_status = "offer_status" in dataset.columns
+
+    if not has_offer_status or not prefer_existing_status:
+        dataset = enrich_with_offer_status(
+            dataset,
+            cache_client=cache_client,
+            cache_prefix=cache_prefix,
+            hour_timestamps=hour_timestamps,
+        )
+
+    if normalizer:
+        dataset = normalizer(dataset)
+        normalized_config = _normalize_config(config)
+        _DATA_CACHE[_cache_key(normalized_config, normalizer)] = dataset
+
+    return dataset
+
+
 def offer_status_cache_key(prefix: str, hour_timestamp: pd.Timestamp) -> str:
     """Cache key for offer_status mapping for a specific hour."""
     hour_str = hour_timestamp.strftime("%Y-%m-%dT%H")
@@ -459,6 +496,7 @@ __all__ = [
     "get_offer_statuses_from_cache",
     "get_redshift_connection",
     "load_dataset_from_source",
+    "load_dataset_with_offer_status",
     "offer_status_cache_key",
     "parse_recent_hours",
 ]
