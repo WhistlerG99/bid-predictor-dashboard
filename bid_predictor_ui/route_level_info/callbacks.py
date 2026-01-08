@@ -4,8 +4,6 @@ import os
 
 from .data_loader import load_audit_data_cached
 from .redshift_loader import load_offer_statuses_cached
-from .metrics import compute_bucket_metrics
-
 from .route_metrics_cache import (
     get_cached_route_metrics,
     set_cached_route_metrics,
@@ -25,10 +23,8 @@ def register_route_level_info_callbacks(app):
         if df.empty:
             return {"status": "empty", "carriers": []}, "No audit data found"
 
-        # Only store list of carriers (small) instead of full 450K rows
         carriers = sorted(df["carrier_code"].dropna().unique())
         return {"status": "loaded", "carriers": carriers}, f"Loaded {len(df):,} audit rows"
-
 
     @app.callback(
         Output("carrier-dropdown", "options"),
@@ -37,9 +33,6 @@ def register_route_level_info_callbacks(app):
     def populate_carriers(data):
         if not data:
             return []
-        # df = pd.DataFrame(data)
-        # carriers = sorted(df["carrier_code"].dropna().unique())
-        # return [{"label": c, "value": c} for c in carriers]
         return [{"label": c, "value": c} for c in data["carriers"]]
 
     @app.callback(
@@ -51,15 +44,13 @@ def register_route_level_info_callbacks(app):
         if not carrier:
             return []
 
-        # 1️⃣ Try precomputed route metrics cache first
+        # Check cached metrics first
         cached_rows = get_cached_route_metrics(carrier, ACCEPT_PROB_THRESHOLD)
         if cached_rows is not None:
             return cached_rows
 
-        # 2️⃣ Load raw data server-side (internal), NOT from frontend
         df = load_audit_data_cached()
         df = df[df["carrier_code"] == carrier]
-
         if df.empty:
             return []
 
@@ -74,33 +65,48 @@ def register_route_level_info_callbacks(app):
 
         rows = []
         for route, route_df in df.groupby("route"):
+            # Deduplicate: keep latest accept_prob_timestamp per offer
             offers_status = (
                 route_df.sort_values("accept_prob_timestamp")
-                .groupby("offer_id", as_index=False)
-                .last()
+                        .groupby("offer_id", as_index=False)
+                        .last()
             )
 
+            # Filter only relevant statuses
             filtered_offers = offers_status[
                 offers_status["offer_status"].isin(
                     ["TICKETED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY", "EXPIRED"]
                 )
             ]
 
-            accepted_mask = offers_status["offer_status"].isin(
+            offer_count = len(filtered_offers)
+            accepted_mask = filtered_offers["offer_status"].isin(
                 ["TICKETED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY"]
             )
+            expiry_mask = filtered_offers["offer_status"] == "EXPIRED"
 
-            offer_count = len(filtered_offers)
             accepted_count = accepted_mask.sum()
-            # expiry_count = offer_count - accepted_count
-            expiry_mask = offers_status["offer_status"] == "EXPIRED"
             expiry_count = expiry_mask.sum()
 
-            upgrades_usd = offers_status.loc[accepted_mask, "usd_base_amount"].sum()
-            offers_usd = offers_status["usd_base_amount"].sum()
+            # USD calculations
+            upgrades_usd = filtered_offers.loc[accepted_mask, "usd_base_amount"].sum()
+            offers_usd = filtered_offers["usd_base_amount"].sum()
             acceptance_rate = (upgrades_usd / offers_usd * 100) if offers_usd else 0.0
 
-            horizon = compute_bucket_metrics(route_df, ACCEPT_PROB_THRESHOLD)
+            # Model predictions
+            filtered_offers["predicted_expired"] = filtered_offers["accept_prob"] < ACCEPT_PROB_THRESHOLD
+
+            num_predicted_expired = int(filtered_offers["predicted_expired"].sum())
+            num_wrongly_expired = int((filtered_offers["predicted_expired"] & accepted_mask).sum())
+
+            negative_precision = (
+                1 - (num_wrongly_expired / num_predicted_expired)
+                if num_predicted_expired > 0 else 0.0
+            )
+            negative_recall = (
+                int((filtered_offers["predicted_expired"] & expiry_mask).sum()) / expiry_count
+                if expiry_count > 0 else 0.0
+            )
 
             rows.append({
                 "route": route,
@@ -110,36 +116,17 @@ def register_route_level_info_callbacks(app):
                 "acceptance_rate": round(acceptance_rate, 2),
                 "accepted": int(accepted_count),
                 "expiry": int(expiry_count),
-
-                # "expiry_72h": horizon["72h"]["expiry_horizon"],
-                "num_wrongly_expired_72h": horizon["72h"]["num_wrongly_expired"],
-                # "percent_wrongly_expired_72h": horizon["72h"]["percent_wrongly_expired"],
-                "negative_precision_72h": horizon["72h"]["negative_precision"],
-                "negative_recall_72h": horizon["72h"]["negative_recall"],
-
-                # "expiry_48h": horizon["48h"]["expiry_horizon"],
-                "num_wrongly_expired_48h": horizon["48h"]["num_wrongly_expired"],
-                # "percent_wrongly_expired_48h": horizon["48h"]["percent_wrongly_expired"],
-                "negative_precision_48h": horizon["48h"]["negative_precision"],
-                "negative_recall_48h": horizon["48h"]["negative_recall"],
-
-                # "expiry_24h": horizon["24h"]["expiry_horizon"],
-                "expiry_72h": horizon["72h"]["num_predicted_expired"],
-                "expiry_48h": horizon["48h"]["num_predicted_expired"],
-                "expiry_24h": horizon["24h"]["num_predicted_expired"],
-
-                "num_wrongly_expired_24h": horizon["24h"]["num_wrongly_expired"],
-                # "percent_wrongly_expired_24h": horizon["24h"]["percent_wrongly_expired"],
-                "negative_precision_24h": horizon["24h"]["negative_precision"],
-                "negative_recall_24h": horizon["24h"]["negative_recall"],
+                "num_wrongly_expired": int(num_wrongly_expired),
+                "negative_precision": round(negative_precision, 3),
+                "negative_recall": round(negative_recall, 3),
+                "num_predicted_expired": int(num_predicted_expired),
             })
 
         rows_df = pd.DataFrame(rows)
         rows_df = rows_df.sort_values("offer_count", ascending=False)
         rows = rows_df.to_dict("records")
 
-        # 3️⃣ Cache computed metrics for this carrier
+        # Cache the computed metrics
         set_cached_route_metrics(carrier, ACCEPT_PROB_THRESHOLD, rows)
 
         return rows
-
