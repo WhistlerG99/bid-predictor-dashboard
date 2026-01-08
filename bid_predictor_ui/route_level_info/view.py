@@ -29,7 +29,7 @@ def build_route_level_info_tab():
                 children=[
                     html.Div(
                         style={
-                            "width": "400px",
+                            "width": "130px",
                             "borderRight": "1px solid #ddd",
                             "paddingRight": "1rem",
                             "flexShrink": 0,
@@ -46,8 +46,8 @@ def build_route_level_info_tab():
                                 f"Acceptance Probability Threshold: {ACCEPT_PROB_THRESHOLD:.2f}",
                                 style={
                                     "marginTop": "12px",
-                                    "fontSize": "18px",
-                                    "fontWeight": "700",
+                                    "fontSize": "13px",
+                                    "fontWeight": "500",
                                     "color": "#000000",
                                     # "backgroundColor": "#f0f6ff",
                                     "padding": "6px 10px",
@@ -66,8 +66,8 @@ def build_route_level_info_tab():
                                             "color": "#2E86AB",
                                             "marginBottom": "5px",
                                             "marginTop": "10px",
-                                            "fontWeight": "600",
-                                            "fontSize": "18px",
+                                            "fontWeight": "500",
+                                            "fontSize": "16px",
                                         },
                                     ),
                                     html.P(
@@ -75,7 +75,7 @@ def build_route_level_info_tab():
                                         style={
                                             "textAlign": "center",
                                             "color": "#555",
-                                            "fontSize": "16px",
+                                            "fontSize": "14px",
                                             "marginTop": "0px",
                                             "marginBottom": "10px",
                                         },
@@ -91,8 +91,8 @@ def build_route_level_info_tab():
                     html.Div(
                         style={
                             "flex": 1,
-                            "maxWidth": "150%",
-                            "overflow": "hidden",
+                            "minWidth": 0,           
+                            "overflowX": "auto",   
                         },
                         children=[
                             html.H3("Routes by Carrier"),
@@ -114,7 +114,6 @@ def build_route_level_info_tab():
                                             {"name": "Offer Count", "id": "offer_count", "type": "numeric"},
                                             {"name": "Accepted Count", "id": "accepted", "type": "numeric"},
                                             {"name": "Expired Count", "id": "expiry", "type": "numeric"},
-
                                             # {"name": "False Negatives @72h", "id": "false_negatives_72h", "type": "numeric"},
                                             # {"name": "False Negatives @48h", "id": "false_negatives_48h", "type": "numeric"},
                                             # {"name": "False Negatives @24h", "id": "false_negatives_24h", "type": "numeric"},
@@ -123,49 +122,56 @@ def build_route_level_info_tab():
                                             # {"name": "Accuracy @48h (%)", "id": "accuracy_rate_48h", "type": "numeric"},
                                             # {"name": "Accuracy @24h (%)", "id": "accuracy_rate_24h", "type": "numeric"},
 
-                                            {"name": "Num Model Expired @72h", "id": "expiry_72h", "type": "numeric"},
-                                            {"name": "Num Wrongly Expired @72h", "id": "num_wrongly_expired_72h", "type": "numeric"},
-                                            {"name": "Percent Wrongly Expired @72h (%)", "id": "percent_wrongly_expired_72h", "type": "numeric"},
+                                            {"name": "BSP Expired 72h", "id": "expiry_72h", "type": "numeric"},
+                                            {"name": "BSP Expired 48h", "id": "expiry_48h", "type": "numeric"},
+                                            {"name": "BSP Expired 24h", "id": "expiry_24h", "type": "numeric"},
+                                            # {"name": "Percent Wrongly Expired @72h (%)", "id": "percent_wrongly_expired_72h", "type": "numeric"},
 
-                                            {"name": "Num Model Expired @48h", "id": "expiry_48h", "type": "numeric"},
-                                            {"name": "Num Wrongly Expired @48h", "id": "num_wrongly_expired_48h", "type": "numeric"},
-                                            {"name": "Percent Wrongly Expired @48h (%)", "id": "percent_wrongly_expired_48h", "type": "numeric"},
+                                            {"name": "False -ve 72h", "id": "num_wrongly_expired_72h", "type": "numeric"},
+                                            {"name": "False -ve 48h", "id": "num_wrongly_expired_48h", "type": "numeric"},
+                                            {"name": "False -ve 24h", "id": "num_wrongly_expired_24h", "type": "numeric"},
+                                            # {"name": "Percent Wrongly Expired @48h (%)", "id": "percent_wrongly_expired_48h", "type": "numeric"},
 
-                                            {"name": "Num Model Expired @24h", "id": "expiry_24h", "type": "numeric"},
-                                            {"name": "Num Wrongly Expired @24h", "id": "num_wrongly_expired_24h", "type": "numeric"},
-                                            {"name": "Percent Wrongly Expired @24h (%)", "id": "percent_wrongly_expired_24h", "type": "numeric"},
+                                            # {"name": "Percent Wrongly Expired @24h (%)", "id": "percent_wrongly_expired_24h", "type": "numeric"},
 
-                                            {"name": "Negative Precision @72h", "id": "negative_precision_72h", "type": "numeric"},
-                                            {"name": "Negative Precision @48h", "id": "negative_precision_48h", "type": "numeric"},
-                                            {"name": "Negative Precision @24h", "id": "negative_precision_24h", "type": "numeric"},
+                                            {"name": "Accuracy 72h", "id": "negative_precision_72h", "type": "numeric"},
+                                            {"name": "Accuracy 48h", "id": "negative_precision_48h", "type": "numeric"},
+                                            {"name": "Accuracy 24h", "id": "negative_precision_24h", "type": "numeric"},
 
-                                            {"name": "Negative Recall @72h", "id": "negative_recall_72h", "type": "numeric"},
-                                            {"name": "Negative Recall @48h", "id": "negative_recall_48h", "type": "numeric"},
-                                            {"name": "Negative Recall @24h", "id": "negative_recall_24h", "type": "numeric"},
+                                            {"name": "True +ve 72h", "id": "negative_recall_72h", "type": "numeric"},
+                                            {"name": "True +ve 48h", "id": "negative_recall_48h", "type": "numeric"},
+                                            {"name": "True +ve 24h", "id": "negative_recall_24h", "type": "numeric"},
 
-                                            {"name": "Score @72h", "id": "score_72h", "type": "numeric"},
-                                            {"name": "Score @48h", "id": "score_48h", "type": "numeric"},
-                                            {"name": "Score @24h", "id": "score_24h", "type": "numeric"},
+                                            # {"name": "Score @72h", "id": "score_72h", "type": "numeric"},
+                                            # {"name": "Score @48h", "id": "score_48h", "type": "numeric"},
+                                            # {"name": "Score @24h", "id": "score_24h", "type": "numeric"},
                                         ],
 
                                         fixed_columns={"headers": True, "data": 1},
 
                                         style_table={
+                                            "width": "max-content", 
+                                            "minWidth": "100%",
                                             "overflowX": "auto",
-                                            "minWidth": "1600px",
                                         },
 
                                         style_cell={
                                             "whiteSpace": "nowrap",
                                             "textAlign": "left",
                                             "padding": "6px 10px",
-                                            "fontSize": "13px",
+                                            "fontSize": "11.5px",
+                                            # "maxWidth": "120px",
                                         },
 
                                         style_header={
+                                            "whiteSpace": "normal",
                                             "backgroundColor": "#f7f7f7",
                                             "fontWeight": "600",
                                             "borderBottom": "1px solid #ccc",
+                                            "backgroundColor": "#f7f7f7",
+                                            "height": "auto",
+                                            "lineHeight": "1.2",
+                                            "textAlign": "center",
                                         },
 
                                         style_data={
@@ -173,10 +179,11 @@ def build_route_level_info_tab():
                                         },
 
                                         style_cell_conditional=[
-                                            {"if": {"column_id": "route"}, "minWidth": "90px"},
-                                            {"if": {"column_id": "offers_usd"}, "minWidth": "110px"},
-                                            {"if": {"column_id": "upgrades_usd"}, "minWidth": "110px"},
-                                            {"if": {"column_id": "acceptance_rate"}, "minWidth": "130px"},
+                                            {"if": {"column_id": "route"}, "minWidth": "85px"},
+                                            {"if": {"column_id": "offers_usd"}, "minWidth": "85px"},
+                                            {"if": {"column_id": "upgrades_usd"}, "minWidth": "80px"},
+                                            {"if": {"column_id": "acceptance_rate"}, "minWidth": "90px"},
+                                            # {"if": {"column_id": "expiry_72h"}, "maxWidth": "70px"},
                                         ],
                                         page_action="none"
                                     ),
