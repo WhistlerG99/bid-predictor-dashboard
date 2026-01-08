@@ -4,6 +4,43 @@ import os
 
 ACCEPT_PROB_THRESHOLD = float(os.environ.get("ACCEPT_PROB_THRESHOLD", 0.2))
 
+BASE_COLUMNS = [
+    {"name": "Route", "id": "route"},
+    {"name": "Offers ($)", "id": "offers_usd", "type": "numeric"},
+    {"name": "Upgrades ($)", "id": "upgrades_usd", "type": "numeric"},
+    {"name": "Acceptance Rate (%)", "id": "acceptance_rate", "type": "numeric"},
+]
+
+HORIZON_COLUMNS = {
+    72: [
+        {"name": "Offer Count 72h", "id": "offer_count_72h", "type": "numeric"},
+        {"name": "Accepted Count 72h", "id": "num_actual_ticketed_72h", "type": "numeric"},
+        {"name": "Expired Count 72h", "id": "num_actual_expired_72h", "type": "numeric"},
+        {"name": "BSP Expired 72h", "id": "expiry_72h", "type": "numeric"},
+        {"name": "False -ve 72h", "id": "num_wrongly_expired_72h", "type": "numeric"},
+        {"name": "Accuracy 72h", "id": "negative_precision_72h", "type": "numeric"},
+        {"name": "True +ve 72h", "id": "negative_recall_72h", "type": "numeric"},
+    ],
+    48: [
+        {"name": "Offer Count 48h", "id": "offer_count_48h", "type": "numeric"},
+        {"name": "Accepted Count 48h", "id": "num_actual_ticketed_48h", "type": "numeric"},
+        {"name": "Expired Count 48h", "id": "num_actual_expired_48h", "type": "numeric"},
+        {"name": "BSP Expired 48h", "id": "expiry_48h", "type": "numeric"},
+        {"name": "False -ve 48h", "id": "num_wrongly_expired_48h", "type": "numeric"},
+        {"name": "Accuracy 48h", "id": "negative_precision_48h", "type": "numeric"},
+        {"name": "True +ve 48h", "id": "negative_recall_48h", "type": "numeric"},
+    ],
+    24: [
+        {"name": "Offer Count 24h", "id": "offer_count_24h", "type": "numeric"},
+        {"name": "Accepted Count 24h", "id": "num_actual_ticketed_24h", "type": "numeric"},
+        {"name": "Expired Count 24h", "id": "num_actual_expired_24h", "type": "numeric"},
+        {"name": "BSP Expired 24h", "id": "expiry_24h", "type": "numeric"},
+        {"name": "False -ve 24h", "id": "num_wrongly_expired_24h", "type": "numeric"},
+        {"name": "Accuracy 24h", "id": "negative_precision_24h", "type": "numeric"},
+        {"name": "True +ve 24h", "id": "negative_recall_24h", "type": "numeric"},
+    ],
+}
+
 def build_route_level_info_tab():
     return dcc.Tab(
         label="Audit Data",
@@ -40,6 +77,17 @@ def build_route_level_info_tab():
                             dcc.Dropdown(
                                 id="carrier-dropdown",
                                 placeholder="Select carrier",
+                                clearable=False,
+                            ),
+                            html.Label("Hours before departure"),
+                            dcc.Dropdown(
+                                id="horizon-dropdown",
+                                options=[
+                                    {"label": "72 Hours", "value": 72},
+                                    {"label": "48 Hours", "value": 48},
+                                    {"label": "24 Hours", "value": 24},
+                                ],
+                                value=72,  # default
                                 clearable=False,
                             ),
                             html.Div(
@@ -106,46 +154,7 @@ def build_route_level_info_tab():
                                     dash_table.DataTable(
                                         id="routes-table",
 
-                                        columns=[
-                                            {"name": "Route", "id": "route"},
-                                            {"name": "Offers ($)", "id": "offers_usd", "type": "numeric"},
-                                            {"name": "Upgrades ($)", "id": "upgrades_usd", "type": "numeric"},
-                                            {"name": "Acceptance Rate (%)", "id": "acceptance_rate", "type": "numeric"},
-                                            {"name": "Offer Count", "id": "offer_count", "type": "numeric"},
-                                            {"name": "Accepted Count", "id": "accepted", "type": "numeric"},
-                                            {"name": "Expired Count", "id": "expiry", "type": "numeric"},
-                                            # {"name": "False Negatives @72h", "id": "false_negatives_72h", "type": "numeric"},
-                                            # {"name": "False Negatives @48h", "id": "false_negatives_48h", "type": "numeric"},
-                                            # {"name": "False Negatives @24h", "id": "false_negatives_24h", "type": "numeric"},
-
-                                            # {"name": "Accuracy @72h (%)", "id": "accuracy_rate_72h", "type": "numeric"},
-                                            # {"name": "Accuracy @48h (%)", "id": "accuracy_rate_48h", "type": "numeric"},
-                                            # {"name": "Accuracy @24h (%)", "id": "accuracy_rate_24h", "type": "numeric"},
-
-                                            {"name": "BSP Expired 72h", "id": "expiry_72h", "type": "numeric"},
-                                            {"name": "BSP Expired 48h", "id": "expiry_48h", "type": "numeric"},
-                                            {"name": "BSP Expired 24h", "id": "expiry_24h", "type": "numeric"},
-                                            # {"name": "Percent Wrongly Expired @72h (%)", "id": "percent_wrongly_expired_72h", "type": "numeric"},
-
-                                            {"name": "False -ve 72h", "id": "num_wrongly_expired_72h", "type": "numeric"},
-                                            {"name": "False -ve 48h", "id": "num_wrongly_expired_48h", "type": "numeric"},
-                                            {"name": "False -ve 24h", "id": "num_wrongly_expired_24h", "type": "numeric"},
-                                            # {"name": "Percent Wrongly Expired @48h (%)", "id": "percent_wrongly_expired_48h", "type": "numeric"},
-
-                                            # {"name": "Percent Wrongly Expired @24h (%)", "id": "percent_wrongly_expired_24h", "type": "numeric"},
-
-                                            {"name": "Accuracy 72h", "id": "negative_precision_72h", "type": "numeric"},
-                                            {"name": "Accuracy 48h", "id": "negative_precision_48h", "type": "numeric"},
-                                            {"name": "Accuracy 24h", "id": "negative_precision_24h", "type": "numeric"},
-
-                                            {"name": "True +ve 72h", "id": "negative_recall_72h", "type": "numeric"},
-                                            {"name": "True +ve 48h", "id": "negative_recall_48h", "type": "numeric"},
-                                            {"name": "True +ve 24h", "id": "negative_recall_24h", "type": "numeric"},
-
-                                            # {"name": "Score @72h", "id": "score_72h", "type": "numeric"},
-                                            # {"name": "Score @48h", "id": "score_48h", "type": "numeric"},
-                                            # {"name": "Score @24h", "id": "score_24h", "type": "numeric"},
-                                        ],
+                                        columns=BASE_COLUMNS + HORIZON_COLUMNS[72],
 
                                         fixed_columns={"headers": True, "data": 1},
 

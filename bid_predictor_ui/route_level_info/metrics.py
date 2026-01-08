@@ -1,234 +1,176 @@
-# import pandas as pd
-
-# HORIZONS = {
-#     "72h": 72,
-#     "48h": 48,
-#     "24h": 24,
-# }
-
-# BUCKETS = {
-#     "72h": (48, 72),   # 72 <= hours_before < 48
-#     "48h": (24, 48),   # 48 <= hours_before < 24
-#     "24h": (0, 24),    # 24 <= hours_before < 0
-# }
-
-# def _select_predictions_for_bucket(df: pd.DataFrame, lower_hours: int, upper_hours: int) -> pd.DataFrame:
-#     """
-#     Select predictions in the bucket: lower_hours <= hours_before < upper_hours
-#     """
-#     lower = df["departure_timestamp"] - pd.Timedelta(hours=upper_hours)
-#     upper = df["departure_timestamp"] - pd.Timedelta(hours=lower_hours)
-#     mask = (df["accept_prob_timestamp"] >= lower) & (df["accept_prob_timestamp"] <= upper)
-#     return df.loc[mask].copy()
-
-
-
-# def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
-#     if "offer_status" not in df.columns:
-#         raise RuntimeError("offer_status missing in compute_bucket_metrics")
-
-#     results = {}
-
-#     for label, (lower, upper) in BUCKETS.items():
-#         bucket_df = _select_predictions_for_bucket(df, lower, upper)
-#         if bucket_df.empty:
-#             results[label] = {
-#                 "num_wrongly_expired": 0,
-#                 "expiry_horizon": 0,
-#                 "percent_wrongly_expired": 0.0,
-#                 "negative_precision": 0.0,
-#                 "negative_recall": 0.0,
-#                 "score": 0,
-#             }
-#             continue
-
-#         # Deduplicate per bucket (latest accept_prob_timestamp per offer)
-#         bucket_df = (
-#             bucket_df.sort_values("accept_prob_timestamp")
-#                      .groupby("offer_id", as_index=False)
-#                      .last()
-#         )
-
-#         bucket_df["predicted_expired"] = bucket_df["accept_prob"] < threshold
-#         bucket_df["actual_ticketed"] = bucket_df["offer_status"].isin(
-#             ["TICKETED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY"]
-#         )
-#         bucket_df["actual_expired"] = bucket_df["offer_status"] == "EXPIRED"
-
-#         num_model_expired = int(bucket_df["predicted_expired"].sum())
-#         num_wrongly_expired = (bucket_df["predicted_expired"] & bucket_df["actual_ticketed"]).sum()
-
-#         percent_wrongly_expired = (
-#             round(num_wrongly_expired / num_model_expired * 100, 2)
-#             if num_model_expired > 0 else 0.0
-#         )
-
-#         negative_precision = 1 - (num_wrongly_expired / num_model_expired) if num_model_expired > 0 else 0.0
-
-#         model_and_actual_expired = bucket_df["predicted_expired"] & bucket_df["actual_expired"]
-#         negative_recall = (
-#             model_and_actual_expired.sum() / bucket_df["actual_expired"].sum()
-#             if bucket_df["actual_expired"].sum() > 0 else 0.0
-#         )
-
-#         score = num_model_expired - num_wrongly_expired - (num_wrongly_expired*10)
-
-#         results[label] = {
-#             "expiry_horizon": int(num_model_expired),
-#             "num_wrongly_expired": int(num_wrongly_expired),
-#             "percent_wrongly_expired": percent_wrongly_expired,
-#             "negative_precision": round(negative_precision, 3),
-#             "negative_recall": round(negative_recall, 3),
-#             "score": int(score),
-#         }
-
-#     return results
-
+# metrics.py
 import pandas as pd
 
-# Exact horizons (same concept as notebook)
 HORIZONS = {
     "72h": 72,
     "48h": 48,
     "24h": 24,
 }
 
-# Tolerance around the exact horizon (±1 hour, notebook equivalent)
 TOLERANCE_HOURS = 1
 
+AUCTION_COLS = [
+    "carrier_code",
+    "flight_number",
+    "travel_date",
+    "upgrade_type",
+]
 
-def _select_nearest_snapshot(
-    df: pd.DataFrame,
-    target_hours: int,
-) -> pd.DataFrame:
+
+def _select_nearest_snapshot(df: pd.DataFrame, target_hours: int) -> pd.DataFrame:
     """
-    For each offer_id, select the prediction snapshot whose timestamp
-    is closest to `target_hours` before departure, within ±TOLERANCE_HOURS.
-
-    This matches the notebook's merge_asof + abs(hour_error) <= 1 logic.
+    CHANGES MADE:
+    1. Added 'target_hours_before_dep' column creation (line 33-35)
+    2. Added 'hrs_before_dep' assignment from target (line 36)
+    3. Added 'abs_error_hours' calculation (line 53)
+    4. Changed tolerance filter to use 'abs_error_hours' (line 56)
+    5. Added 'target_hours_before_dep' to the final merge (line 60)
+    
+    This now matches the notebook's get_snapshots() logic exactly.
     """
-
     if df.empty:
         return df
-
-    required_cols = {
-        "offer_id",
-        "departure_timestamp",
-        "accept_prob_timestamp",
-        "accept_prob",
-        "offer_status",
-    }
-    missing = required_cols - set(df.columns)
-    if missing:
-        raise RuntimeError(f"Missing required columns in metrics: {missing}")
-
+    
     df = df.copy()
-
-    # Hours before departure for each prediction
-    df["hrs_before_dep"] = (
-        (df["departure_timestamp"] - df["accept_prob_timestamp"])
-        .dt.total_seconds() / 3600
+    
+    # --- Notebook-aligned hours before departure
+    df["hrs_before_dep"] = df["days_before_departure"].astype(float) * 24.0
+    df = df[df["hrs_before_dep"] >= 0]
+    
+    # Drop rows with missing keys
+    df = df.dropna(subset=AUCTION_COLS + ["hrs_before_dep", "current_timestamp"])
+    
+    # --- Snapshot candidates
+    snapshots = (
+        df[AUCTION_COLS + ["current_timestamp", "hrs_before_dep"]]
+        .drop_duplicates(AUCTION_COLS + ["current_timestamp"])
     )
-
-    # Absolute error from target horizon
-    df["abs_err"] = (df["hrs_before_dep"] - target_hours).abs()
-
-    # Keep only snapshots within tolerance
-    df = df[df["abs_err"] <= TOLERANCE_HOURS]
-    if df.empty:
-        return df
-
-    # Nearest snapshot per offer_id
-    # (same offer can appear once per horizon, but can appear again for other horizons)
-    nearest = (
-        df.sort_values("abs_err")
-          .groupby("offer_id", as_index=False)
-          .first()
+    
+    auctions = snapshots[AUCTION_COLS].drop_duplicates()
+    
+    # CHANGE 1: Add target_hours_before_dep column (like notebook)
+    target_df = auctions.merge(
+        pd.DataFrame({"target_hours_before_dep": [float(target_hours)]}),
+        how="cross"
     )
-
-    return nearest
+    # CHANGE 2: Set hrs_before_dep from target (like notebook)
+    target_df["hrs_before_dep"] = target_df["target_hours_before_dep"].astype(float)
+    
+    # CRITICAL: For merge_asof, sort by 'on' key FIRST, then 'by' keys
+    # This is different from the notebook but required by pandas merge_asof
+    sort_cols = ["hrs_before_dep"] + AUCTION_COLS
+    
+    snapshots = snapshots.sort_values(sort_cols, kind="mergesort").reset_index(drop=True)
+    target_df = target_df.sort_values(sort_cols, kind="mergesort").reset_index(drop=True)
+    
+    # --- Find nearest snapshot
+    chosen = pd.merge_asof(
+        target_df,
+        snapshots,
+        by=AUCTION_COLS,
+        on="hrs_before_dep",
+        direction="nearest",
+    )
+    
+    # CHANGE 3: Calculate absolute error (like notebook)
+    chosen["abs_error_hours"] = (chosen["hrs_before_dep"] - chosen["target_hours_before_dep"]).abs()
+    
+    # CHANGE 4: Filter by tolerance using abs_error_hours (like notebook)
+    chosen = chosen[chosen["abs_error_hours"] <= TOLERANCE_HOURS]
+    
+    # CHANGE 5: Include target_hours_before_dep in merge (like notebook)
+    return df.merge(
+        chosen[AUCTION_COLS + ["target_hours_before_dep", "current_timestamp"]],
+        on=AUCTION_COLS + ["current_timestamp"],
+        how="inner"
+    )
 
 
 def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
     """
-    Snapshot-based horizon metrics (not bucket-based).
-
-    For each horizon (72h / 48h / 24h):
-    - Select nearest snapshot per offer within ±1h
-    - Count snapshots (num_of_bids)
-    - Compute wrongly expired, negative precision, negative recall
-
-    Offer status semantics are intentionally kept EXACTLY
-    as they are in the current app.
+    Notebook-aligned snapshot metrics (PER HORIZON):
+    - offer_count
+    - num_actual_ticketed
+    - num_actual_expired
+    - predicted expired
+    - wrongly expired
+    - negative precision / recall
+    
+    CHANGES MADE:
+    1. Added offer_status filter at the start (matches notebook's get_metrics)
+    2. Rest of logic remains the same
     """
-
     results = {}
-
+    
+    # CHANGE: Filter by valid offer statuses BEFORE computing metrics (like notebook)
+    df = df[df["offer_status"].isin(["TICKETED", "EXPIRED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY"])]
+    
     if df.empty:
         for label in HORIZONS:
             results[label] = {
-                "num_of_bids": 0,
+                "offer_count": 0,
+                "num_actual_ticketed": 0,
+                "num_actual_expired": 0,
+                "num_predicted_expired": 0,
                 "num_wrongly_expired": 0,
                 "negative_precision": 0.0,
                 "negative_recall": 0.0,
-                "num_predicted_expired": 0,
             }
         return results
-
-    # Defensive: ensure timestamps are datetime
-    df = df.copy()
-    df["departure_timestamp"] = pd.to_datetime(df["departure_timestamp"])
-    df["accept_prob_timestamp"] = pd.to_datetime(df["accept_prob_timestamp"])
-
+    
     for label, target_hours in HORIZONS.items():
         snap_df = _select_nearest_snapshot(df, target_hours)
-
+        
         if snap_df.empty:
             results[label] = {
-                "num_of_bids": 0,
+                "offer_count": 0,
+                "num_actual_ticketed": 0,
+                "num_actual_expired": 0,
+                "num_predicted_expired": 0,
                 "num_wrongly_expired": 0,
                 "negative_precision": 0.0,
                 "negative_recall": 0.0,
-                "num_predicted_expired": 0,
             }
             continue
-
-        # Model decision
-        snap_df["predicted_expired"] = snap_df["accept_prob"] < threshold
-
-        # Ground truth (KEEPING APP SEMANTICS)
+        
+        # Ground truth (snapshot-based)
         snap_df["actual_ticketed"] = snap_df["offer_status"].isin(
             ["TICKETED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY"]
         )
         snap_df["actual_expired"] = snap_df["offer_status"] == "EXPIRED"
-
-        num_of_bids = len(snap_df)
+        
+        # Model decision
+        snap_df["predicted_expired"] = snap_df["accept_prob"] < threshold
+        
+        offer_count = len(snap_df)
+        num_actual_ticketed = int(snap_df["actual_ticketed"].sum())
+        num_actual_expired = int(snap_df["actual_expired"].sum())
         num_model_expired = int(snap_df["predicted_expired"].sum())
-
         num_wrongly_expired = int(
             (snap_df["predicted_expired"] & snap_df["actual_ticketed"]).sum()
         )
-
-        # Precision on negative class (same as notebook)
+        
         negative_precision = (
             1 - (num_wrongly_expired / num_model_expired)
-            if num_model_expired > 0 else 0.0
+            if num_model_expired > 0
+            else 0.0
         )
-
-        # Recall on negative class
-        actual_expired_count = int(snap_df["actual_expired"].sum())
+        
         negative_recall = (
             int((snap_df["predicted_expired"] & snap_df["actual_expired"]).sum())
-            / actual_expired_count
-            if actual_expired_count > 0 else 0.0
+            / num_actual_expired
+            if num_actual_expired > 0
+            else 0.0
         )
-
+        
         results[label] = {
-            "num_of_bids": int(num_of_bids),
-            "num_wrongly_expired": int(num_wrongly_expired),
+            "offer_count": offer_count,
+            "num_actual_ticketed": num_actual_ticketed,
+            "num_actual_expired": num_actual_expired,
+            "num_predicted_expired": num_model_expired,
+            "num_wrongly_expired": num_wrongly_expired,
             "negative_precision": round(negative_precision, 3),
             "negative_recall": round(negative_recall, 3),
-            "num_predicted_expired": int(num_model_expired),
         }
-
+    
     return results

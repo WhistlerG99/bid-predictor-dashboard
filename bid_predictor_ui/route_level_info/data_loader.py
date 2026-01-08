@@ -129,7 +129,7 @@ def load_audit_data_cached() -> pd.DataFrame:
 
     print(f"[Audit cache] MISS {cache_key}, loading from S3")
 
-    # 2. Time the S3 loading
+    # 2. Load from S3
     start_time = time.time()
     df = _load_audit_data_from_s3(start_ts, end_ts)
     elapsed = time.time() - start_time
@@ -139,7 +139,29 @@ def load_audit_data_cached() -> pd.DataFrame:
         print("[Audit loader] No audit data found")
         return df
 
-    # 3. Cache in Redis with timing
+    # --- Snapshot timestamp (notebook: current_timestamp)
+    if "accept_prob_timestamp" not in df.columns:
+        raise RuntimeError("accept_prob_timestamp missing from audit data")
+
+    df["current_timestamp"] = pd.to_datetime(df["accept_prob_timestamp"])
+
+    # --- Travel date (notebook: travel_date)
+    if "departure_timestamp" not in df.columns:
+        raise RuntimeError("departure_timestamp missing from audit data")
+
+    df["travel_date"] = (
+        pd.to_datetime(df["departure_timestamp"])
+        .dt.date
+    )
+
+    # Optional safety checks (cheap, but very helpful)
+    if df["current_timestamp"].isna().any():
+        raise RuntimeError("Null current_timestamp after normalization")
+
+    if df["travel_date"].isna().any():
+        raise RuntimeError("Null travel_date after normalization")
+
+    # 3. Cache normalized DF in Redis
     if redis_client is not None:
         start_cache = time.time()
         redis_client.setex(
@@ -151,3 +173,4 @@ def load_audit_data_cached() -> pd.DataFrame:
         print(f"[Audit cache] Stored {len(df)} rows in Redis in {cache_elapsed:.2f}s")
 
     return df
+
