@@ -13,7 +13,16 @@ from .route_metrics_cache import (
     set_cached_route_metrics,
 )
 
-ACCEPT_PROB_THRESHOLD = float(os.environ.get("ACCEPT_PROB_THRESHOLD"))
+# Carrier-specific thresholds
+CARRIER_THRESHOLDS = {
+    "EY": float(os.environ.get("ACCEPT_PROB_THRESHOLD_EY", 0.2)),
+    "SV": float(os.environ.get("ACCEPT_PROB_THRESHOLD_SV", 0.1)),
+}
+
+
+def get_threshold_for_carrier(carrier: str) -> float:
+    """Get the acceptance probability threshold for a specific carrier."""
+    return CARRIER_THRESHOLDS.get(carrier, 0.2)  # default to 0.2 if carrier not found
 
 
 def register_route_level_info_callbacks(app):
@@ -44,6 +53,17 @@ def register_route_level_info_callbacks(app):
         return [{"label": c, "value": c} for c in data["carriers"]]
     
     @app.callback(
+        Output("threshold-display", "children"),
+        Input("carrier-dropdown", "value"),
+    )
+    def update_threshold_display(carrier):
+        if not carrier:
+            return "Select a carrier to see threshold"
+        threshold = get_threshold_for_carrier(carrier)
+        print(f"[THRESHOLD DEBUG] Carrier: {carrier}, Threshold: {threshold:.2f}")
+        return f"Acceptance Probability Threshold: {threshold:.2f}"
+    
+    @app.callback(
         Output("routes-table", "columns"),
         Input("horizon-dropdown", "value"),
     )
@@ -59,10 +79,17 @@ def register_route_level_info_callbacks(app):
         if not carrier:
             return []
 
+        # Get carrier-specific threshold
+        threshold = get_threshold_for_carrier(carrier)
+        print(f"\n[ROUTES TABLE UPDATE] Carrier: {carrier}, Using threshold: {threshold:.2f}")
+
         # 1️⃣ Route metrics cache (carrier + threshold + window)
-        cached_rows = get_cached_route_metrics(carrier, ACCEPT_PROB_THRESHOLD)
+        cached_rows = get_cached_route_metrics(carrier, threshold)
         if cached_rows is not None:
+            print(f"[ROUTES TABLE] Cache HIT for {carrier} with threshold {threshold:.2f}")
             return cached_rows
+
+        print(f"[ROUTES TABLE] Cache MISS for {carrier}, computing metrics with threshold {threshold:.2f}")
 
         # 2️⃣ Load raw audit data (server-side)
         df = load_audit_data_cached()
@@ -116,7 +143,7 @@ def register_route_level_info_callbacks(app):
             )
 
             # --- NOTEBOOK-ALIGNED SNAPSHOT METRICS ---
-            horizon = compute_bucket_metrics(route_df, ACCEPT_PROB_THRESHOLD)
+            horizon = compute_bucket_metrics(route_df, threshold)
 
             rows.append({
                 "route": route,
@@ -156,6 +183,10 @@ def register_route_level_info_callbacks(app):
                 "num_wrongly_expired_24h": horizon["24h"]["num_wrongly_expired"],
                 "negative_precision_24h": horizon["24h"]["negative_precision"],
                 "negative_recall_24h": horizon["24h"]["negative_recall"],
+
+                "num_unique_offers_72h": horizon["72h"]["num_unique_offers"],
+                "num_unique_offers_48h": horizon["48h"]["num_unique_offers"],
+                "num_unique_offers_24h": horizon["24h"]["num_unique_offers"],
             })
 
         rows_df = pd.DataFrame(rows)
@@ -168,6 +199,6 @@ def register_route_level_info_callbacks(app):
         rows = rows_df.to_dict("records")
 
         # 4️⃣ Cache computed route metrics
-        set_cached_route_metrics(carrier, ACCEPT_PROB_THRESHOLD, rows)
+        set_cached_route_metrics(carrier, threshold, rows)
 
         return rows

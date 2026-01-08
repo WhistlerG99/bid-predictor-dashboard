@@ -2,8 +2,6 @@ from dash import html, dcc
 import dash_table
 import os
 
-ACCEPT_PROB_THRESHOLD = float(os.environ.get("ACCEPT_PROB_THRESHOLD", 0.2))
-
 BASE_COLUMNS = [
     {"name": "Route", "id": "route"},
     {"name": "Offers ($)", "id": "offers_usd", "type": "numeric"},
@@ -20,6 +18,7 @@ HORIZON_COLUMNS = {
         {"name": "False -ve 72h", "id": "num_wrongly_expired_72h", "type": "numeric"},
         {"name": "Accuracy 72h", "id": "negative_precision_72h", "type": "numeric"},
         {"name": "True +ve 72h", "id": "negative_recall_72h", "type": "numeric"},
+        {"name": "Unique Offers 72h", "id": "num_unique_offers_72h", "type": "numeric"},
     ],
     48: [
         {"name": "Offer Count 48h", "id": "offer_count_48h", "type": "numeric"},
@@ -29,6 +28,7 @@ HORIZON_COLUMNS = {
         {"name": "False -ve 48h", "id": "num_wrongly_expired_48h", "type": "numeric"},
         {"name": "Accuracy 48h", "id": "negative_precision_48h", "type": "numeric"},
         {"name": "True +ve 48h", "id": "negative_recall_48h", "type": "numeric"},
+        {"name": "Unique Offers 48h", "id": "num_unique_offers_48h", "type": "numeric"},
     ],
     24: [
         {"name": "Offer Count 24h", "id": "offer_count_24h", "type": "numeric"},
@@ -38,6 +38,7 @@ HORIZON_COLUMNS = {
         {"name": "False -ve 24h", "id": "num_wrongly_expired_24h", "type": "numeric"},
         {"name": "Accuracy 24h", "id": "negative_precision_24h", "type": "numeric"},
         {"name": "True +ve 24h", "id": "negative_recall_24h", "type": "numeric"},
+        {"name": "Unique Offers 24h", "id": "num_unique_offers_24h", "type": "numeric"},
     ],
 }
 
@@ -91,17 +92,14 @@ def build_route_level_info_tab():
                                 clearable=False,
                             ),
                             html.Div(
-                                f"Acceptance Probability Threshold: {ACCEPT_PROB_THRESHOLD:.2f}",
+                                id="threshold-display",
                                 style={
                                     "marginTop": "12px",
                                     "fontSize": "13px",
                                     "fontWeight": "500",
                                     "color": "#000000",
-                                    # "backgroundColor": "#f0f6ff",
                                     "padding": "6px 10px",
-                                    # "borderRadius": "4px",
                                     "display": "inline-block",
-                                    # "border": "5px solid #d0e3ff",
                                 },
                             ),
                             html.Div(
