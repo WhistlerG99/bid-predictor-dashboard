@@ -118,40 +118,28 @@ def register_route_level_info_callbacks(app):
 
         for route, route_df in df.groupby("route"):
 
-            # --- Business / revenue metrics ---
-            # These intentionally use final state per offer
-            final_state = (
-                route_df.sort_values("accept_prob_timestamp")
-                        .groupby("offer_id", as_index=False)
-                        .last()
-            )
-
-            valid_final = final_state[
-                final_state["offer_status"].isin(
-                    ["TICKETED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY", "EXPIRED"]
-                )
-            ]
-
-            accepted_mask = valid_final["offer_status"].isin(
-                ["TICKETED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY"]
-            )
-
-            offers_usd = valid_final["usd_base_amount"].sum()
-            upgrades_usd = valid_final.loc[accepted_mask, "usd_base_amount"].sum()
-            acceptance_rate = (
-                upgrades_usd / offers_usd * 100 if offers_usd else 0.0
-            )
-
             # --- NOTEBOOK-ALIGNED SNAPSHOT METRICS ---
+            
             horizon = compute_bucket_metrics(route_df, threshold)
 
             rows.append({
                 "route": route,
 
                 # Business metrics (final-state)
-                "offers_usd": round(offers_usd, 2),
-                "upgrades_usd": round(upgrades_usd, 2),
-                "acceptance_rate": round(acceptance_rate, 2),
+                "offers_usd_72h": horizon["72h"]["offers_usd"],
+                "offers_usd_48h": horizon["48h"]["offers_usd"],
+                "offers_usd_24h": horizon["24h"]["offers_usd"],
+
+                "upgrades_usd_72h": horizon["72h"]["upgrades_usd"],
+                "upgrades_usd_48h": horizon["48h"]["upgrades_usd"],
+                "upgrades_usd_24h": horizon["24h"]["upgrades_usd"],
+
+                "acceptance_rate_72h": horizon["72h"]["acceptance_rate"],
+                "acceptance_rate_48h": horizon["48h"]["acceptance_rate"],
+                "acceptance_rate_24h": horizon["24h"]["acceptance_rate"],
+                # "offers_usd": round(offers_usd, 2),
+                # "upgrades_usd": round(upgrades_usd, 2),
+                # "acceptance_rate": round(acceptance_rate, 4),
 
                 # Offer counts are PER HORIZON (notebook semantics)
                 "offer_count_72h": horizon["72h"]["offer_count"],
@@ -183,10 +171,6 @@ def register_route_level_info_callbacks(app):
                 "num_wrongly_expired_24h": horizon["24h"]["num_wrongly_expired"],
                 "negative_precision_24h": horizon["24h"]["negative_precision"],
                 "negative_recall_24h": horizon["24h"]["negative_recall"],
-
-                "num_unique_offers_72h": horizon["72h"]["num_unique_offers"],
-                "num_unique_offers_48h": horizon["48h"]["num_unique_offers"],
-                "num_unique_offers_24h": horizon["24h"]["num_unique_offers"],
             })
 
         rows_df = pd.DataFrame(rows)
