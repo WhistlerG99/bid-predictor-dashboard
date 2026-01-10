@@ -81,6 +81,9 @@ REDIS_URL = os.getenv("REDIS_URL")
 # Rolling window cache: automatically refresh data every hour for this many hours
 ROLLING_WINDOW_HOURS = int(os.getenv("ROLLING_WINDOW_HOURS", "120"))
 PERFORMANCE_HISTORY_REFRESH_DAYS = int(os.getenv("PERFORMANCE_HISTORY_REFRESH_DAYS", "5"))
+PERFORMANCE_REFRESH_INTERVAL_SECONDS = int(
+    os.getenv("PERFORMANCE_REFRESH_INTERVAL_SECONDS", "3600")
+)
 
 
 def _get_redis_client() -> Optional["redis.Redis"]:
@@ -187,6 +190,31 @@ def _extract_timestamp_from_filename(file_path: str) -> Optional[pd.Timestamp]:
     return _extract_timestamp_from_name(filename)
 
 
+def _format_refresh_interval(seconds: int) -> str:
+    """Format refresh interval seconds for logs and UI."""
+
+    safe_seconds = max(int(seconds), 1)
+    if safe_seconds < 60:
+        return f"{safe_seconds} seconds"
+    minutes, remaining = divmod(safe_seconds, 60)
+    if minutes < 60 and remaining == 0:
+        return f"{minutes} minutes"
+    hours, minutes = divmod(minutes, 60)
+    if minutes == 0:
+        return f"{hours} hours"
+    return f"{hours} hours {minutes} minutes"
+
+
+def _resolve_refresh_interval_seconds() -> int:
+    """Return a safe refresh interval in seconds."""
+
+    try:
+        seconds = int(PERFORMANCE_REFRESH_INTERVAL_SECONDS)
+    except (TypeError, ValueError):
+        seconds = 3600
+    return max(seconds, 60)
+
+
 def _refresh_hourly_cache() -> None:
     """Background task: refresh hourly cache buckets - only fetch newest hour."""
     if not S3_DATASET_LISTING_URI:
@@ -277,11 +305,15 @@ def _refresh_hourly_cache() -> None:
     except Exception as exc:
         print(f"[Hourly refresh] Failed to clean old buckets: {exc}")
     
-    print(f"[Hourly refresh] Refresh complete. Next refresh in 1 hour.")
+    interval_seconds = _resolve_refresh_interval_seconds()
+    print(
+        "[Hourly refresh] Refresh complete. Next refresh in "
+        f"{_format_refresh_interval(interval_seconds)}."
+    )
 
 
 def _background_refresh_worker() -> None:
-    """Background worker thread that refreshes cache every hour."""
+    """Background worker thread that refreshes cache on a fixed interval."""
     # Initial refresh after 30 seconds (to let app start)
     time.sleep(30)
     
@@ -291,8 +323,8 @@ def _background_refresh_worker() -> None:
         except Exception as exc:
             print(f"[Hourly refresh] Error in background refresh: {exc}")
         
-        # Wait 1 hour before next refresh
-        time.sleep(3600)
+        # Wait before next refresh
+        time.sleep(_resolve_refresh_interval_seconds())
 
 
 def _refresh_performance_history() -> None:
@@ -314,12 +346,21 @@ def _refresh_performance_history() -> None:
 
 
 def _performance_history_refresh_worker() -> None:
-    """Background worker thread that refreshes performance history every hour."""
+    """Background worker thread that refreshes performance history on a fixed interval."""
     time.sleep(60)
 
     while True:
         _refresh_performance_history()
-        time.sleep(3600)
+        time.sleep(_resolve_refresh_interval_seconds())
+
+
+def _trigger_performance_history_refresh() -> None:
+    if PERFORMANCE_HISTORY_S3_URI and S3_DATASET_LISTING_URI:
+        threading.Thread(
+            target=_refresh_performance_history,
+            daemon=True,
+            name="PerformanceHistoryStartupRefresh",
+        ).start()
 
 
 def _load_from_hour_buckets(hours: int) -> Optional[pd.DataFrame]:
@@ -391,6 +432,17 @@ def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> N
         )
     except Exception as exc:
         print(f"[Acceptance loader] Warning: Failed to populate internal cache: {exc}")
+
+
+def _format_departure_range(dataset: pd.DataFrame) -> str:
+    if dataset.empty or "departure_timestamp" not in dataset.columns:
+        return "Departure date range unavailable."
+    timestamps = pd.to_datetime(dataset["departure_timestamp"], errors="coerce").dropna()
+    if timestamps.empty:
+        return "Departure date range unavailable."
+    start_date = timestamps.min().date()
+    end_date = timestamps.max().date()
+    return f"All departures between {start_date:%Y-%m-%d} and {end_date:%Y-%m-%d}"
 
 
 # -- Dash application --------------------------------------------------------------------------
@@ -578,30 +630,12 @@ def create_app() -> Dash:
                         [
                             html.Div(
                                 [
-                                    html.Label(
-                                        "Lookback (hours)",
-                                        style={
-                                            "fontWeight": "600",
-                                            "marginRight": "0.5rem",
-                                        },
-                                    ),
-                                    dcc.Input(
-                                        id="acceptance-lookback-hours",
-                                        type="number",
-                                        min=1,
-                                        step=1,
-                                        value=DEFAULT_S3_LOOKBACK_HOURS,
-                                        style={
-                                            "width": "5rem",
-                                        },
-                                    ),
                                     html.Button(
-                                        "Apply",
-                                        id="acceptance-lookback-apply",
+                                        "Refresh acceptance data",
+                                        id="acceptance-refresh",
                                         n_clicks=0,
                                         style={
-                                            "marginLeft": "0.75rem",
-                                            "padding": "0.25rem 0.75rem",
+                                            "padding": "0.45rem 0.9rem",
                                             "borderRadius": "6px",
                                             "border": "none",
                                             "backgroundColor": "#1b4965",
@@ -615,6 +649,14 @@ def create_app() -> Dash:
                                     "display": "flex",
                                     "alignItems": "center",
                                     "width": "100%",
+                                },
+                            ),
+                            html.Div(
+                                id="acceptance-departure-range",
+                                style={
+                                    "marginTop": "0.5rem",
+                                    "color": "#16324f",
+                                    "fontWeight": 600,
                                 },
                             ),
                             html.Div(
@@ -706,6 +748,7 @@ def create_app() -> Dash:
 
     # Start background hourly refresh thread
     if REDIS_URL and S3_DATASET_LISTING_URI:
+        refresh_interval = _format_refresh_interval(_resolve_refresh_interval_seconds())
         refresh_thread = threading.Thread(
             target=_background_refresh_worker,
             daemon=True,
@@ -714,10 +757,12 @@ def create_app() -> Dash:
         refresh_thread.start()
         print(
             f"[Hourly refresh] Background refresh thread started. "
-            f"Will refresh {ROLLING_WINDOW_HOURS}h rolling window every hour."
+            f"Will refresh {ROLLING_WINDOW_HOURS}h rolling window every {refresh_interval}."
         )
 
     if PERFORMANCE_HISTORY_S3_URI and S3_DATASET_LISTING_URI:
+        refresh_interval = _format_refresh_interval(_resolve_refresh_interval_seconds())
+        _trigger_performance_history_refresh()
         history_refresh_thread = threading.Thread(
             target=_performance_history_refresh_worker,
             daemon=True,
@@ -726,7 +771,7 @@ def create_app() -> Dash:
         history_refresh_thread.start()
         print(
             "[Performance history] Background refresh thread started. "
-            "Will refresh performance history every hour."
+            f"Will refresh performance history every {refresh_interval}."
         )
 
     # Callbacks -----------------------------------------------------------------------------
@@ -809,36 +854,33 @@ def create_app() -> Dash:
         Output("acceptance-dataset-path-store", "data"),
         Output("acceptance-loader-status", "children"),
         Input("acceptance-loader-interval", "n_intervals"),
-        Input("acceptance-lookback-apply", "n_clicks"),
-        State("acceptance-lookback-hours", "value"),
+        Input("acceptance-refresh", "n_clicks"),
         prevent_initial_call=False,
     )
     def load_acceptance_dataset_on_startup(
         n_intervals: int,
-        apply_clicks: int,
-        lookback_value: Optional[int],
+        refresh_clicks: int,
     ):
         if not S3_DATASET_LISTING_URI:
             message = "S3_DATASET_LISTING_URI is not configured."
             return message, None, message
 
-        # Resolve lookback window in hours from user input
-        try:
-            hours = int(lookback_value) if lookback_value is not None else DEFAULT_S3_LOOKBACK_HOURS
-        except (TypeError, ValueError):
-            hours = DEFAULT_S3_LOOKBACK_HOURS
-        if hours <= 0:
-            hours = DEFAULT_S3_LOOKBACK_HOURS
+        hours = DEFAULT_S3_LOOKBACK_HOURS
 
-        # Determine trigger source: initial interval vs user "Apply" click.
+        # Determine trigger source: initial interval vs user refresh click.
         trigger = ""
         if callback_context.triggered:
             trigger = callback_context.triggered[0]["prop_id"].split(".")[0]
 
+        refresh_requested = trigger == "acceptance-refresh"
+
+        if trigger in {"acceptance-loader-interval", "acceptance-refresh"}:
+            _trigger_performance_history_refresh()
+
         cache_client = _get_redis_client()
         
         # First, try loading from hour buckets (new rolling window cache)
-        if hours <= ROLLING_WINDOW_HOURS:
+        if hours <= ROLLING_WINDOW_HOURS and not refresh_requested:
             bucket_data = _load_from_hour_buckets(hours)
             if bucket_data is not None:
                 # Successfully loaded from hour buckets
@@ -865,7 +907,7 @@ def create_app() -> Dash:
         cache_key = _acceptance_cache_key(hours)
 
         # Try Redis cache - exact match for requested hours (legacy)
-        if cache_client is not None:
+        if cache_client is not None and not refresh_requested:
             cached = cache_client.get(cache_key)
             if cached:
                 try:
@@ -1088,6 +1130,24 @@ def create_app() -> Dash:
         # Populate internal cache so dropdowns work
         _populate_acceptance_cache(dataset, dataset_config)
         return status, dataset_config, loader_status
+
+
+    @app.callback(
+        Output("acceptance-departure-range", "children"),
+        Input("acceptance-dataset-path-store", "data"),
+    )
+    def update_departure_range(
+        dataset_config: Optional[object],
+    ) -> str:
+        if not dataset_config:
+            return "Departure date range unavailable."
+
+        try:
+            dataset = load_acceptance_dataset(dataset_config)
+        except Exception:
+            return "Departure date range unavailable."
+
+        return _format_departure_range(dataset)
 
 
     @app.callback(
