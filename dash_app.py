@@ -726,7 +726,12 @@ def create_app() -> Dash:
                 interval=500,
                 n_intervals=0,
                 max_intervals=1,
-            ),            
+            ),
+            dcc.Interval(
+                id="acceptance-auto-refresh-interval",
+                interval=_resolve_refresh_interval_seconds() * 1000,
+                n_intervals=0,
+            ),
             html.Div(
                 id="tab-content",
                 children=build_snapshot_tab().children,
@@ -854,11 +859,13 @@ def create_app() -> Dash:
         Output("acceptance-dataset-path-store", "data"),
         Output("acceptance-loader-status", "children"),
         Input("acceptance-loader-interval", "n_intervals"),
+        Input("acceptance-auto-refresh-interval", "n_intervals"),
         Input("acceptance-refresh", "n_clicks"),
         prevent_initial_call=False,
     )
     def load_acceptance_dataset_on_startup(
         n_intervals: int,
+        auto_refresh_intervals: int,
         refresh_clicks: int,
     ):
         if not S3_DATASET_LISTING_URI:
@@ -872,9 +879,13 @@ def create_app() -> Dash:
         if callback_context.triggered:
             trigger = callback_context.triggered[0]["prop_id"].split(".")[0]
 
-        refresh_requested = trigger == "acceptance-refresh"
+        refresh_requested = trigger in {"acceptance-refresh", "acceptance-auto-refresh-interval"}
 
-        if trigger in {"acceptance-loader-interval", "acceptance-refresh"}:
+        if trigger in {
+            "acceptance-loader-interval",
+            "acceptance-refresh",
+            "acceptance-auto-refresh-interval",
+        }:
             _trigger_performance_history_refresh()
 
         cache_client = _get_redis_client()
