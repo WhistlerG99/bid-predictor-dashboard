@@ -304,6 +304,8 @@ def _refresh_hourly_cache() -> None:
                 pass
     except Exception as exc:
         print(f"[Hourly refresh] Failed to clean old buckets: {exc}")
+
+    _refresh_cached_offer_statuses(cache_client)
     
     interval_seconds = _resolve_refresh_interval_seconds()
     print(
@@ -443,6 +445,63 @@ def _format_departure_range(dataset: pd.DataFrame) -> str:
     start_date = timestamps.min().date()
     end_date = timestamps.max().date()
     return f"All departures between {start_date:%Y-%m-%d} and {end_date:%Y-%m-%d}"
+
+
+def _refresh_cached_offer_statuses(cache_client: "redis.Redis") -> None:
+    """Recheck offer statuses for cached acceptance data."""
+
+    prefix = S3_DATASET_LISTING_URI or ""
+    now = pd.Timestamp.now()
+    oldest_allowed = now - pd.Timedelta(hours=ROLLING_WINDOW_HOURS + 1)
+    data_pattern = f"acceptance_dataset_hour:{prefix}:*"
+    all_data_keys = cache_client.keys(data_pattern)
+    refreshed_buckets = 0
+
+    for key in all_data_keys:
+        if isinstance(key, bytes):
+            key = key.decode("utf-8")
+        try:
+            hour_str = key.split(":")[-1]
+            hour_ts = pd.to_datetime(hour_str, format="%Y-%m-%dT%H")
+            if hour_ts < oldest_allowed:
+                continue
+        except Exception:
+            continue
+
+        cached = cache_client.get(key)
+        if not cached:
+            continue
+
+        try:
+            buffer = io.BytesIO(cached)
+            hour_data = pd.read_parquet(buffer)
+        except Exception as exc:
+            print(f"[Hourly refresh] Failed to read cached bucket {key}: {exc}")
+            continue
+
+        if hour_data.empty or "offer_id" not in hour_data.columns:
+            continue
+
+        offer_ids = hour_data["offer_id"].dropna().astype(str).unique().tolist()
+        if not offer_ids:
+            continue
+
+        offer_statuses = fetch_offer_statuses(offer_ids)
+        if not offer_statuses:
+            continue
+
+        cache_offer_statuses(
+            cache_client,
+            prefix,
+            hour_ts,
+            offer_statuses,
+        )
+        refreshed_buckets += 1
+
+    if refreshed_buckets:
+        print(
+            f"[Hourly refresh] Refreshed offer_status for {refreshed_buckets} cached buckets."
+        )
 
 
 # -- Dash application --------------------------------------------------------------------------
