@@ -60,9 +60,6 @@ from bid_predictor_ui.performance_history import (
     build_performance_history_tab,
     register_performance_history_callbacks,
 )
-from bid_predictor_ui.performance_history.data import (
-    update_performance_history_from_source,
-)
 from bid_predictor_ui import data_sources as data_sources_module
 from bid_predictor_ui.acceptance_explorer.view import _normalize_acceptance_dataset
 
@@ -77,7 +74,6 @@ default_dataset_path = os.environ.get("DEFAULT_DATASET_PATH")
 S3_DATASET_LISTING_URI = os.environ.get("S3_DATASET_LISTING_URI")
 DEFAULT_S3_LOOKBACK_HOURS = int(os.getenv("S3_DATASET_LOOKBACK_HOURS", "120"))
 PERFORMANCE_HISTORY_S3_URI = os.getenv("PERFORMANCE_HISTORY_S3_URI")
-PERFORMANCE_HISTORY_REFRESH_DAYS = int(os.getenv("PERFORMANCE_HISTORY_REFRESH_DAYS", "5"))
 REDIS_URL = os.getenv("REDIS_URL")
 # Rolling window cache: automatically refresh data every hour for this many hours
 ROLLING_WINDOW_HOURS = int(os.getenv("ROLLING_WINDOW_HOURS", "120"))
@@ -363,23 +359,6 @@ def _populate_acceptance_cache(dataset: pd.DataFrame, dataset_config: dict) -> N
         )
     except Exception as exc:
         print(f"[Acceptance loader] Warning: Failed to populate internal cache: {exc}")
-
-
-def _maybe_update_performance_history() -> None:
-    """Update the performance history parquet if configured."""
-    if not PERFORMANCE_HISTORY_S3_URI or not S3_DATASET_LISTING_URI:
-        return
-    cache_client = _get_redis_client()
-    try:
-        update_performance_history_from_source(
-            PERFORMANCE_HISTORY_S3_URI,
-            S3_DATASET_LISTING_URI,
-            refresh_days=PERFORMANCE_HISTORY_REFRESH_DAYS,
-            cache_client=cache_client,
-        )
-        print("[Performance history] Updated performance history file.")
-    except Exception as exc:  # pragma: no cover - non-blocking background update
-        print(f"[Performance history] Failed to update history file: {exc}")
 
 
 # -- Dash application --------------------------------------------------------------------------
@@ -836,7 +815,6 @@ def create_app() -> Dash:
                     "hours": hours,
                 }
                 _populate_acceptance_cache(bucket_data, dataset_config)
-                _maybe_update_performance_history()
                 return status, dataset_config, loader_status
         
         # Fall back to legacy full-window cache or S3
@@ -873,7 +851,6 @@ def create_app() -> Dash:
                     }
                     # Populate internal cache so dropdowns work
                     _populate_acceptance_cache(dataset, dataset_config)
-                    _maybe_update_performance_history()
                     return status, dataset_config, loader_status
                 except Exception as exc:  # pragma: no cover - cache decode issues
                     print(f"[Acceptance loader] Failed to read cached dataset: {exc}")
@@ -943,7 +920,6 @@ def create_app() -> Dash:
                                         }
                                         # Populate internal cache so dropdowns work
                                         _populate_acceptance_cache(filtered_dataset, dataset_config)
-                                        _maybe_update_performance_history()
                                         return status, dataset_config, loader_status
                                     else:
                                         print(
@@ -1067,7 +1043,6 @@ def create_app() -> Dash:
         )
         # Populate internal cache so dropdowns work
         _populate_acceptance_cache(dataset, dataset_config)
-        _maybe_update_performance_history()
         return status, dataset_config, loader_status
 
 
