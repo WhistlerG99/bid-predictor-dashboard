@@ -60,6 +60,9 @@ from bid_predictor_ui.performance_history import (
     build_performance_history_tab,
     register_performance_history_callbacks,
 )
+from bid_predictor_ui.performance_history.data import (
+    update_performance_history_from_source,
+)
 from bid_predictor_ui import data_sources as data_sources_module
 from bid_predictor_ui.acceptance_explorer.view import _normalize_acceptance_dataset
 
@@ -287,6 +290,33 @@ def _background_refresh_worker() -> None:
             print(f"[Hourly refresh] Error in background refresh: {exc}")
         
         # Wait 1 hour before next refresh
+        time.sleep(3600)
+
+
+def _refresh_performance_history() -> None:
+    """Refresh performance history snapshots from the source dataset."""
+    if not PERFORMANCE_HISTORY_S3_URI or not S3_DATASET_LISTING_URI:
+        return
+
+    cache_client = _get_redis_client()
+    try:
+        update_performance_history_from_source(
+            PERFORMANCE_HISTORY_S3_URI,
+            S3_DATASET_LISTING_URI,
+            refresh_days=PERFORMANCE_HISTORY_REFRESH_DAYS,
+            cache_client=cache_client,
+        )
+        print("[Performance history] Updated performance history file.")
+    except Exception as exc:  # pragma: no cover - non-blocking background update
+        print(f"[Performance history] Failed to update history file: {exc}")
+
+
+def _performance_history_refresh_worker() -> None:
+    """Background worker thread that refreshes performance history every hour."""
+    time.sleep(60)
+
+    while True:
+        _refresh_performance_history()
         time.sleep(3600)
 
 
@@ -683,6 +713,18 @@ def create_app() -> Dash:
         print(
             f"[Hourly refresh] Background refresh thread started. "
             f"Will refresh {ROLLING_WINDOW_HOURS}h rolling window every hour."
+        )
+
+    if PERFORMANCE_HISTORY_S3_URI and S3_DATASET_LISTING_URI:
+        history_refresh_thread = threading.Thread(
+            target=_performance_history_refresh_worker,
+            daemon=True,
+            name="PerformanceHistoryRefresh",
+        )
+        history_refresh_thread.start()
+        print(
+            "[Performance history] Background refresh thread started. "
+            "Will refresh performance history every hour."
         )
 
     # Callbacks -----------------------------------------------------------------------------
