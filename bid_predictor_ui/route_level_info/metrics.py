@@ -57,14 +57,16 @@ def _select_nearest_snapshot(df: pd.DataFrame, target_hours: int) -> pd.DataFram
         direction="nearest",
     )
 
-    chosen["abs_error_hours"] = (chosen["hrs_before_dep"] - chosen["target_hours_before_dep"]).abs()
-    chosen = chosen[chosen["abs_error_hours"] <= TOLERANCE_HOURS]
-
-    return df.merge(
+    result = df.merge(
         chosen[AUCTION_COLS + ["target_hours_before_dep", "current_timestamp"]],
         on=AUCTION_COLS + ["current_timestamp"],
         how="inner"
     )
+
+    result["abs_error_hours"] = (result["hrs_before_dep"] - result["target_hours_before_dep"]).abs()
+    result = result[result["abs_error_hours"] <= TOLERANCE_HOURS]
+
+    return result
 
 
 def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
@@ -78,6 +80,9 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
     if df.empty:
         for label in HORIZONS:
             results[label] = {
+                "offers_usd": 0.0,
+                "upgrades_usd": 0.0,
+                "acceptance_rate": 0.0,                
                 "offer_count": 0,
                 "num_actual_ticketed": 0,
                 "num_actual_expired": 0,
@@ -94,6 +99,9 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
 
         if snap_df.empty:
             results[label] = {
+                "offers_usd": 0.0,
+                "upgrades_usd": 0.0,
+                "acceptance_rate": 0.0,
                 "offer_count": 0,
                 "num_actual_ticketed": 0,
                 "num_actual_expired": 0,
@@ -117,6 +125,13 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
         snap_df["actual_expired"] = snap_df["offer_status"] == "EXPIRED"
         snap_df["predicted_expired"] = snap_df["accept_prob"] < threshold
 
+        offers_usd = snap_df["usd_base_amount"].sum()
+        upgrades_usd = snap_df[snap_df.actual_ticketed]["usd_base_amount"].sum()
+
+        acceptance_rate = (
+            upgrades_usd / offers_usd if offers_usd else 0.0
+        )
+
         offer_count = len(snap_df)
         num_actual_ticketed = int(snap_df["actual_ticketed"].sum())
         num_actual_expired = int(snap_df["actual_expired"].sum())
@@ -125,25 +140,24 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
             (snap_df["predicted_expired"] & snap_df["actual_ticketed"]).sum()
         )
         negative_precision = (
-            1 - (num_wrongly_expired / num_model_expired) if num_model_expired > 0 else 0.0
+            1 - (num_wrongly_expired / num_model_expired) if num_model_expired > 0 else 1.0
         )
         negative_recall = (
             int((snap_df["predicted_expired"] & snap_df["actual_expired"]).sum()) / num_actual_expired
-            if num_actual_expired > 0 else 0.0
+            if num_actual_expired > 0 else 1.0
         )
 
-        # --- NEW: Total unique offers
-        num_unique_offers = snap_df["offer_id"].nunique()
-
         results[label] = {
+            "offers_usd": round(offers_usd,2),
+            "upgrades_usd": round(upgrades_usd,2),
+            "acceptance_rate": round(acceptance_rate,4),
             "offer_count": offer_count,
             "num_actual_ticketed": num_actual_ticketed,
             "num_actual_expired": num_actual_expired,
             "num_predicted_expired": num_model_expired,
             "num_wrongly_expired": num_wrongly_expired,
-            "negative_precision": round(negative_precision, 3),
-            "negative_recall": round(negative_recall, 3),
-            "num_unique_offers": num_unique_offers,  # NEW
+            "negative_precision": round(negative_precision, 4),
+            "negative_recall": round(negative_recall, 4),
         }
 
     return results
