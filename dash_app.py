@@ -923,7 +923,7 @@ def create_app() -> Dash:
         prevent_initial_call=False,
     )
     def load_acceptance_dataset_on_startup(
-        n_intervals: int,
+        # n_intervals: int,
         auto_refresh_intervals: int,
         refresh_clicks: int,
     ):
