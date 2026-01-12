@@ -937,6 +937,7 @@ def create_app() -> Dash:
         trigger = ""
         if callback_context.triggered:
             trigger = callback_context.triggered[0]["prop_id"].split(".")[0]
+            print(f"[Load Acceptance Dataset] trigger: ", trigger)
 
         refresh_requested = trigger in {"acceptance-refresh", "acceptance-auto-refresh-interval"}
 
@@ -945,8 +946,10 @@ def create_app() -> Dash:
             "acceptance-refresh",
             "acceptance-auto-refresh-interval",
         }:
+            print("[Load Acceptance Dataset] Executing Performance Refresh")
             _trigger_performance_history_refresh()
-
+            # _refresh_performance_history()
+            
         cache_client = _get_redis_client()
         
         # First, try loading from hour buckets (new rolling window cache)
@@ -1110,8 +1113,8 @@ def create_app() -> Dash:
                 f"[Acceptance loader] Found {len(filtered_files)} files under "
                 f"{S3_DATASET_LISTING_URI} within last {hours} hours."
             )
-            for path in filtered_files:
-                print(f"[Acceptance loader] Using file: s3://{path}")
+            # for path in filtered_files:
+            #     print(f"[Acceptance loader] Using file: s3://{path}")
         except Exception as exc:
             error_msg = f"Failed to list S3 files: {exc}"
             return error_msg, None, error_msg
@@ -1155,7 +1158,8 @@ def create_app() -> Dash:
                 try:
                     timestamps = pd.to_datetime(dataset["accept_prob_timestamp"], errors="coerce")
                     required_buckets = _get_hour_buckets_for_window(hours)
-                    
+
+                    print(f"[Acceptance loader] Populating {len(required_buckets)} hour buckets")
                     for hour_ts in required_buckets:
                         hour_start = hour_ts
                         hour_end = hour_ts + pd.Timedelta(hours=1)
@@ -1167,10 +1171,10 @@ def create_app() -> Dash:
                             bucket_buffer = io.BytesIO()
                             hour_data.to_parquet(bucket_buffer, index=False)
                             cache_client.setex(bucket_key, 7200, bucket_buffer.getvalue())
-                            print(
-                                f"[Acceptance loader] Populated hour bucket "
-                                f"{hour_ts.strftime('%Y-%m-%d %H:00')} ({len(hour_data):,} rows)."
-                            )
+                            # print(
+                            #     f"[Acceptance loader] Populated hour bucket "
+                            #     f"{hour_ts.strftime('%Y-%m-%d %H:00')} ({len(hour_data):,} rows)."
+                            # )
                             
                             # Also cache offer_status for this hour if we have offer_ids
                             if "offer_id" in hour_data.columns and "offer_status" in hour_data.columns:
