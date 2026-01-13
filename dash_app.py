@@ -122,87 +122,19 @@ def _get_hour_buckets_for_window(hours: int) -> list[pd.Timestamp]:
     return sorted(set(buckets))  # Remove duplicates and sort
 
 
-# def _fetch_hour_data_from_s3(hour_timestamp: pd.Timestamp) -> Optional[pd.DataFrame]:
-#     """Fetch data for a specific hour from S3 by loading files and filtering by timestamp."""
-#     if not S3_DATASET_LISTING_URI:
-#         return None
-    
-#     try:
-#         filesystem = pyfs.S3FileSystem()
-#         all_files = _list_remote_files(filesystem, S3_DATASET_LISTING_URI)
-        
-#         # Load files that might contain data for this hour (files from last 2 hours to be safe)
-#         hour_start = hour_timestamp
-#         hour_end = hour_timestamp + pd.Timedelta(hours=1)
-#         lookback_start = hour_start - pd.Timedelta(hours=2)
-        
-#         candidate_files = []
-#         for file_path in all_files:
-#             file_ts = _extract_timestamp_from_filename(file_path)
-#             if file_ts and lookback_start <= file_ts < hour_end:
-#                 candidate_files.append(file_path)
-        
-#         if not candidate_files:
-#             return pd.DataFrame()  # Empty DataFrame for hours with no data
-        
-#         # Load and combine files, then filter by data timestamps
-#         frames = []
-#         for remote_path in candidate_files:
-#             suffix = remote_path.split(".")[-1].lower()
-#             try:
-#                 with filesystem.open_input_file(remote_path) as handle:
-#                     if suffix in {"parquet", "pq"}:
-#                         frames.append(pd.read_parquet(handle))
-#                     elif suffix == "csv":
-#                         frames.append(pd.read_csv(handle))
-#             except Exception as exc:
-#                 print(f"[Hourly refresh] Failed to load file {remote_path}: {exc}")
-#                 continue
-        
-#         if not frames:
-#             return pd.DataFrame()
-        
-#         combined = pd.concat(frames, ignore_index=True, sort=False)
-        
-#         # Filter by timestamp column in the data
-#         timestamp_cols = ["accept_prob_timestamp", "current_timestamp", "created_timestamp"]
-#         timestamp_col = next((col for col in timestamp_cols if col in combined.columns), None)
-        
-#         if timestamp_col:
-#             timestamps = pd.to_datetime(combined[timestamp_col], errors="coerce")
-#             hour_mask = (timestamps >= hour_start) & (timestamps < hour_end)
-#             hour_data = combined[hour_mask].copy()
-#             return hour_data
-#         else:
-#             # No timestamp column, return all data (fallback)
-#             return combined
-#     except Exception as exc:
-#         print(f"[Hourly refresh] Failed to fetch hour {hour_timestamp}: {exc}")
-#         return None
+def _format_refresh_interval(seconds: int) -> str:
+    """Format refresh interval seconds for logs and UI."""
 
-
-# def _extract_timestamp_from_filename(file_path: str) -> Optional[pd.Timestamp]:
-#     """Extract timestamp from S3 file path."""
-#     from pathlib import PurePosixPath
-#     from bid_predictor_ui.data_sources import _extract_timestamp_from_name
-    
-#     filename = PurePosixPath(file_path).name
-#     return _extract_timestamp_from_name(filename)
-
-
-# def _format_refresh_interval(seconds: int) -> str:
-#     """Format refresh interval seconds for logs and UI."""
-
-#     safe_seconds = max(int(seconds), 1)
-#     if safe_seconds < 60:
-#         return f"{safe_seconds} seconds"
-#     minutes, remaining = divmod(safe_seconds, 60)
-#     if minutes < 60 and remaining == 0:
-#         return f"{minutes} minutes"
-#     hours, minutes = divmod(minutes, 60)
-#     if minutes == 0:
-#         return f"{hours} hours"
-#     return f"{hours} hours {minutes} minutes"
+    safe_seconds = max(int(seconds), 1)
+    if safe_seconds < 60:
+        return f"{safe_seconds} seconds"
+    minutes, remaining = divmod(safe_seconds, 60)
+    if minutes < 60 and remaining == 0:
+        return f"{minutes} minutes"
+    hours, minutes = divmod(minutes, 60)
+    if minutes == 0:
+        return f"{hours} hours"
+    return f"{hours} hours {minutes} minutes"
 
 
 def _resolve_refresh_interval_seconds() -> int:
@@ -213,120 +145,6 @@ def _resolve_refresh_interval_seconds() -> int:
     except (TypeError, ValueError):
         seconds = 3600
     return max(seconds, 60)
-
-
-# def _refresh_hourly_cache() -> None:
-#     """Background task: refresh hourly cache buckets - only fetch newest hour."""
-#     if not S3_DATASET_LISTING_URI:
-#         return
-    
-#     cache_client = _get_redis_client()
-#     if cache_client is None:
-#         print("[Hourly refresh] Redis not configured, skipping hourly refresh.")
-#         return
-    
-#     print(f"[Hourly refresh] Starting refresh for {ROLLING_WINDOW_HOURS}h rolling window...")
-    
-#     # Only fetch the NEWEST hour (current hour)
-#     now = pd.Timestamp.now()
-#     current_hour = now.replace(minute=0, second=0, microsecond=0)
-    
-#     cache_key = _hour_bucket_cache_key(current_hour)
-#     cached = cache_client.get(cache_key)
-    
-#     if not cached:
-#         # Fetch only the newest hour's data from S3
-#         hour_data = _fetch_hour_data_from_s3(current_hour)
-#         if hour_data is not None and not hour_data.empty:
-#             try:
-#                 buffer = io.BytesIO()
-#                 hour_data.to_parquet(buffer, index=False)
-#                 # Cache for 2 hours (longer than refresh interval)
-#                 cache_client.setex(cache_key, 7200, buffer.getvalue())
-#                 print(
-#                     f"[Hourly refresh] Cached newest hour {current_hour.strftime('%Y-%m-%d %H:00')} "
-#                     f"({len(hour_data):,} rows)."
-#                 )
-                
-#                 # Fetch and cache offer_status for this hour
-#                 if "offer_id" in hour_data.columns:
-#                     offer_ids = hour_data["offer_id"].dropna().astype(str).unique().tolist()
-#                     if offer_ids:
-#                         offer_statuses = fetch_offer_statuses(offer_ids)
-#                         if offer_statuses:
-#                             cache_offer_statuses(
-#                                 cache_client,
-#                                 S3_DATASET_LISTING_URI or "",
-#                                 current_hour,
-#                                 offer_statuses,
-#                             )
-#             except Exception as exc:
-#                 print(f"[Hourly refresh] Failed to cache hour {current_hour}: {exc}")
-#         else:
-#             print(f"[Hourly refresh] No data found for hour {current_hour.strftime('%Y-%m-%d %H:00')}.")
-#     else:
-#         print(f"[Hourly refresh] Hour {current_hour.strftime('%Y-%m-%d %H:00')} already cached, skipping.")
-    
-#     # Remove old buckets outside the rolling window (both data and offer_status)
-#     try:
-#         prefix = S3_DATASET_LISTING_URI or ""
-#         now = pd.Timestamp.now()
-#         oldest_allowed = now - pd.Timedelta(hours=ROLLING_WINDOW_HOURS + 1)
-        
-#         # Clean data buckets
-#         data_pattern = f"acceptance_dataset_hour:{prefix}:*"
-#         all_data_keys = cache_client.keys(data_pattern)
-#         for key in all_data_keys:
-#             if isinstance(key, bytes):
-#                 key = key.decode('utf-8')
-#             try:
-#                 hour_str = key.split(":")[-1]
-#                 hour_ts = pd.to_datetime(hour_str, format="%Y-%m-%dT%H")
-#                 if hour_ts < oldest_allowed:
-#                     cache_client.delete(key)
-#                     print(f"[Hourly refresh] Removed old data bucket: {hour_str}")
-#             except Exception:
-#                 pass
-        
-#         # Clean offer_status buckets
-#         status_pattern = f"offer_status_hour:{prefix}:*"
-#         all_status_keys = cache_client.keys(status_pattern)
-#         for key in all_status_keys:
-#             if isinstance(key, bytes):
-#                 key = key.decode('utf-8')
-#             try:
-#                 hour_str = key.split(":")[-1]
-#                 hour_ts = pd.to_datetime(hour_str, format="%Y-%m-%dT%H")
-#                 if hour_ts < oldest_allowed:
-#                     cache_client.delete(key)
-#                     print(f"[Hourly refresh] Removed old offer_status bucket: {hour_str}")
-#             except Exception:
-#                 pass
-#     except Exception as exc:
-#         print(f"[Hourly refresh] Failed to clean old buckets: {exc}")
-
-#     _refresh_cached_offer_statuses(cache_client)
-    
-#     interval_seconds = _resolve_refresh_interval_seconds()
-#     print(
-#         "[Hourly refresh] Refresh complete. Next refresh in "
-#         f"{_format_refresh_interval(interval_seconds)}."
-#     )
-
-
-# def _background_refresh_worker() -> None:
-#     """Background worker thread that refreshes cache on a fixed interval."""
-#     # Initial refresh after 30 seconds (to let app start)
-#     time.sleep(30)
-    
-#     while True:
-#         try:
-#             _refresh_hourly_cache()
-#         except Exception as exc:
-#             print(f"[Hourly refresh] Error in background refresh: {exc}")
-        
-#         # Wait before next refresh
-#         time.sleep(_resolve_refresh_interval_seconds())
 
 
 def _refresh_performance_history() -> None:
@@ -347,13 +165,13 @@ def _refresh_performance_history() -> None:
         print(f"[Performance history] Failed to update history file: {exc}")
 
 
-# def _performance_history_refresh_worker() -> None:
-#     """Background worker thread that refreshes performance history on a fixed interval."""
-#     time.sleep(60)
+def _performance_history_refresh_worker() -> None:
+    """Background worker thread that refreshes performance history on a fixed interval."""
+    time.sleep(60)
 
-#     while True:
-#         _refresh_performance_history()
-#         time.sleep(_resolve_refresh_interval_seconds())
+    while True:
+        _refresh_performance_history()
+        time.sleep(_resolve_refresh_interval_seconds())
 
 
 def _trigger_performance_history_refresh() -> None:
@@ -445,63 +263,6 @@ def _format_departure_range(dataset: pd.DataFrame) -> str:
     start_date = timestamps.min().date()
     end_date = timestamps.max().date()
     return f"All departures between {start_date:%Y-%m-%d} and {end_date:%Y-%m-%d}"
-
-
-# def _refresh_cached_offer_statuses(cache_client: "redis.Redis") -> None:
-#     """Recheck offer statuses for cached acceptance data."""
-
-#     prefix = S3_DATASET_LISTING_URI or ""
-#     now = pd.Timestamp.now()
-#     oldest_allowed = now - pd.Timedelta(hours=ROLLING_WINDOW_HOURS + 1)
-#     data_pattern = f"acceptance_dataset_hour:{prefix}:*"
-#     all_data_keys = cache_client.keys(data_pattern)
-#     refreshed_buckets = 0
-
-#     for key in all_data_keys:
-#         if isinstance(key, bytes):
-#             key = key.decode("utf-8")
-#         try:
-#             hour_str = key.split(":")[-1]
-#             hour_ts = pd.to_datetime(hour_str, format="%Y-%m-%dT%H")
-#             if hour_ts < oldest_allowed:
-#                 continue
-#         except Exception:
-#             continue
-
-#         cached = cache_client.get(key)
-#         if not cached:
-#             continue
-
-#         try:
-#             buffer = io.BytesIO(cached)
-#             hour_data = pd.read_parquet(buffer)
-#         except Exception as exc:
-#             print(f"[Hourly refresh] Failed to read cached bucket {key}: {exc}")
-#             continue
-
-#         if hour_data.empty or "offer_id" not in hour_data.columns:
-#             continue
-
-#         offer_ids = hour_data["offer_id"].dropna().astype(str).unique().tolist()
-#         if not offer_ids:
-#             continue
-
-#         offer_statuses = fetch_offer_statuses(offer_ids)
-#         if not offer_statuses:
-#             continue
-
-#         cache_offer_statuses(
-#             cache_client,
-#             prefix,
-#             hour_ts,
-#             offer_statuses,
-#         )
-#         refreshed_buckets += 1
-
-#     if refreshed_buckets:
-#         print(
-#             f"[Hourly refresh] Refreshed offer_status for {refreshed_buckets} cached buckets."
-#         )
 
 
 # -- Dash application --------------------------------------------------------------------------
@@ -780,12 +541,6 @@ def create_app() -> Dash:
                 id="feature-config-store",
                 data=deepcopy(DEFAULT_UI_FEATURE_CONFIG),
             ),
-            # dcc.Interval(
-            #     id="acceptance-loader-interval",
-            #     interval=500,
-            #     n_intervals=0,
-            #     max_intervals=1,
-            # ),
             dcc.Interval(
                 id="acceptance-auto-refresh-interval",
                 interval=_resolve_refresh_interval_seconds() * 1000,
@@ -810,33 +565,20 @@ def create_app() -> Dash:
     register_performance_callbacks(app)
     register_performance_history_callbacks(app, PERFORMANCE_HISTORY_S3_URI)
 
-    # # Start background hourly refresh thread
-    # if REDIS_URL and S3_DATASET_LISTING_URI:
-    #     refresh_interval = _format_refresh_interval(_resolve_refresh_interval_seconds())
-    #     refresh_thread = threading.Thread(
-    #         target=_background_refresh_worker,
-    #         daemon=True,
-    #         name="HourlyCacheRefresh"
-    #     )
-    #     refresh_thread.start()
-    #     print(
-    #         f"[Hourly refresh] Background refresh thread started. "
-    #         f"Will refresh {ROLLING_WINDOW_HOURS}h rolling window every {refresh_interval}."
-    #     )
-
-    # if PERFORMANCE_HISTORY_S3_URI and S3_DATASET_LISTING_URI:
-    #     refresh_interval = _format_refresh_interval(_resolve_refresh_interval_seconds())
-    #     _trigger_performance_history_refresh()
-    #     history_refresh_thread = threading.Thread(
-    #         target=_performance_history_refresh_worker,
-    #         daemon=True,
-    #         name="PerformanceHistoryRefresh",
-    #     )
-    #     history_refresh_thread.start()
-    #     print(
-    #         "[Performance history] Background refresh thread started. "
-    #         f"Will refresh performance history every {refresh_interval}."
-    #     )
+    # NOT SURE IF I NEED THIS
+    if PERFORMANCE_HISTORY_S3_URI and S3_DATASET_LISTING_URI:
+        refresh_interval = _format_refresh_interval(_resolve_refresh_interval_seconds())
+        _trigger_performance_history_refresh()
+        history_refresh_thread = threading.Thread(
+            target=_performance_history_refresh_worker,
+            daemon=True,
+            name="PerformanceHistoryRefresh",
+        )
+        history_refresh_thread.start()
+        print(
+            "[Performance history] Background refresh thread started. "
+            f"Will refresh performance history every {refresh_interval}."
+        )
 
     # Callbacks -----------------------------------------------------------------------------
 
@@ -917,13 +659,11 @@ def create_app() -> Dash:
         Output("acceptance-dataset-status", "children"),
         Output("acceptance-dataset-path-store", "data"),
         Output("acceptance-loader-status", "children"),
-        # Input("acceptance-loader-interval", "n_intervals"),
         Input("acceptance-auto-refresh-interval", "n_intervals"),
         Input("acceptance-refresh", "n_clicks"),
         prevent_initial_call=False,
     )
     def load_acceptance_dataset_on_startup(
-        # n_intervals: int,
         auto_refresh_intervals: int,
         refresh_clicks: int,
     ):
@@ -942,7 +682,6 @@ def create_app() -> Dash:
         refresh_requested = trigger in {"acceptance-refresh", "acceptance-auto-refresh-interval"}
 
         if trigger in {
-            # "acceptance-loader-interval",
             "acceptance-refresh",
             "acceptance-auto-refresh-interval",
         }:
@@ -1113,8 +852,6 @@ def create_app() -> Dash:
                 f"[Acceptance loader] Found {len(filtered_files)} files under "
                 f"{S3_DATASET_LISTING_URI} within last {hours} hours."
             )
-            # for path in filtered_files:
-            #     print(f"[Acceptance loader] Using file: s3://{path}")
         except Exception as exc:
             error_msg = f"Failed to list S3 files: {exc}"
             return error_msg, None, error_msg
@@ -1171,10 +908,6 @@ def create_app() -> Dash:
                             bucket_buffer = io.BytesIO()
                             hour_data.to_parquet(bucket_buffer, index=False)
                             cache_client.setex(bucket_key, 7200, bucket_buffer.getvalue())
-                            # print(
-                            #     f"[Acceptance loader] Populated hour bucket "
-                            #     f"{hour_ts.strftime('%Y-%m-%d %H:00')} ({len(hour_data):,} rows)."
-                            # )
                             
                             # Also cache offer_status for this hour if we have offer_ids
                             if "offer_id" in hour_data.columns and "offer_status" in hour_data.columns:

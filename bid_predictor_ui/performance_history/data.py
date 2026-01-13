@@ -15,7 +15,7 @@ from pyarrow import fs as pyfs
 from ..data_sources import _list_remote_files, enrich_with_offer_status
 
 logger = logging.getLogger(__name__)
-
+logging.basicConfig(level=logging.DEBUG)
 DEFAULT_THRESHOLD = 0.5
 HISTORY_DATE_COLUMN = "history_date"
 ALL_CARRIER_VALUE = "ALL"
