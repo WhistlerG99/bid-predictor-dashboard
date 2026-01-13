@@ -1,5 +1,6 @@
 from dash import Input, Output, State
 import pandas as pd
+import numpy as np
 import os
 
 from .data_loader import load_audit_data_cached
@@ -118,28 +119,55 @@ def register_route_level_info_callbacks(app):
 
         for route, route_df in df.groupby("route"):
 
-            # --- NOTEBOOK-ALIGNED SNAPSHOT METRICS ---
+            # --- Business / revenue metrics ---
+            # These intentionally use final state per offer
+            final_state = (
+                route_df.sort_values("accept_prob_timestamp")
+                        .groupby("offer_id", as_index=False)
+                        .last()
+            )
+
+            valid_final = final_state[
+                final_state["offer_status"].isin(
+                    ["TICKETED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY", "EXPIRED"]
+                )
+            ]
+
+            accepted_mask = valid_final["offer_status"].isin(
+                ["TICKETED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY"]
+            )
+
+            offers_usd = (valid_final["usd_base_amount"]*valid_final["item_count"]).sum()
+            upgrades_usd = (valid_final["usd_base_amount"]*valid_final["item_count"]).loc[accepted_mask].sum()
             
+            num_offers = len(valid_final)
+            num_upgrades = len(valid_final.loc[accepted_mask])
+            acceptance_rate = (
+                num_upgrades / num_offers if num_offers else np.nan
+            )
+
+            # --- NOTEBOOK-ALIGNED SNAPSHOT METRICS ---
             horizon = compute_bucket_metrics(route_df, threshold)
 
             rows.append({
                 "route": route,
 
                 # Business metrics (final-state)
-                "offers_usd_72h": horizon["72h"]["offers_usd"],
-                "offers_usd_48h": horizon["48h"]["offers_usd"],
-                "offers_usd_24h": horizon["24h"]["offers_usd"],
+                "offers_usd": round(offers_usd, 2),
+                "upgrades_usd": round(upgrades_usd, 2),
+                "acceptance_rate": round(acceptance_rate, 4),
 
-                "upgrades_usd_72h": horizon["72h"]["upgrades_usd"],
-                "upgrades_usd_48h": horizon["48h"]["upgrades_usd"],
-                "upgrades_usd_24h": horizon["24h"]["upgrades_usd"],
+                # "offers_usd_72h": horizon["72h"]["offers_usd"],
+                # "offers_usd_48h": horizon["48h"]["offers_usd"],
+                # "offers_usd_24h": horizon["24h"]["offers_usd"],
 
-                "acceptance_rate_72h": horizon["72h"]["acceptance_rate"],
-                "acceptance_rate_48h": horizon["48h"]["acceptance_rate"],
-                "acceptance_rate_24h": horizon["24h"]["acceptance_rate"],
-                # "offers_usd": round(offers_usd, 2),
-                # "upgrades_usd": round(upgrades_usd, 2),
-                # "acceptance_rate": round(acceptance_rate, 4),
+                # "upgrades_usd_72h": horizon["72h"]["upgrades_usd"],
+                # "upgrades_usd_48h": horizon["48h"]["upgrades_usd"],
+                # "upgrades_usd_24h": horizon["24h"]["upgrades_usd"],
+
+                # "acceptance_rate_72h": horizon["72h"]["acceptance_rate"],
+                # "acceptance_rate_48h": horizon["48h"]["acceptance_rate"],
+                # "acceptance_rate_24h": horizon["24h"]["acceptance_rate"],
 
                 # Offer counts are PER HORIZON (notebook semantics)
                 "offer_count_72h": horizon["72h"]["offer_count"],
@@ -161,15 +189,15 @@ def register_route_level_info_callbacks(app):
 
                 # Wrongly expired + precision / recall
                 "num_wrongly_expired_72h": horizon["72h"]["num_wrongly_expired"],
-                "negative_precision_72h": horizon["72h"]["negative_precision"],
+                "negative_precision_72h": horizon["72h"]["negative_precision"] if horizon["72h"]["negative_precision"] else "NaN",
                 "negative_recall_72h": horizon["72h"]["negative_recall"],
 
                 "num_wrongly_expired_48h": horizon["48h"]["num_wrongly_expired"],
-                "negative_precision_48h": horizon["48h"]["negative_precision"],
+                "negative_precision_48h": horizon["48h"]["negative_precision"] if horizon["48h"]["negative_precision"] else "NaN",
                 "negative_recall_48h": horizon["48h"]["negative_recall"],
 
                 "num_wrongly_expired_24h": horizon["24h"]["num_wrongly_expired"],
-                "negative_precision_24h": horizon["24h"]["negative_precision"],
+                "negative_precision_24h": horizon["24h"]["negative_precision"] if horizon["24h"]["negative_precision"] else "NaN",
                 "negative_recall_24h": horizon["24h"]["negative_recall"],
             })
 

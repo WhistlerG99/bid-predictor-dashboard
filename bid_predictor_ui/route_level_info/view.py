@@ -3,47 +3,41 @@ import dash_table
 import os
 
 money = dash_table.FormatTemplate.money(2)
-percentage = dash_table.FormatTemplate.percentage(2)
+percentage = dash_table.FormatTemplate.percentage(2).nully('NaN')
 
 BASE_COLUMNS = [
     {"name": "Route", "id": "route"},
+    {"name": "Offers ($)", "id": "offers_usd", "type": "numeric", "format": money},
+    {"name": "Upgrades ($)", "id": "upgrades_usd", "type": "numeric", "format": money},
+    {"name": "Acceptance Rate (%)", "id": "acceptance_rate", "type": "numeric", "format": percentage},
 ]
 
 HORIZON_COLUMNS = {
     72: [
-        {"name": "Offers 72h ($)", "id": "offers_usd_72h", "type": "numeric", "format": money},
-        {"name": "Upgrades 72h ($)", "id": "upgrades_usd_72h", "type": "numeric", "format": money},
-        {"name": "Acceptance Rate 72h (%)", "id": "acceptance_rate_72h", "type": "numeric", "format": percentage},
-        {"name": "Offer Count 72h", "id": "offer_count_72h", "type": "numeric"},
-        {"name": "Accepted Count 72h", "id": "num_actual_ticketed_72h", "type": "numeric"},
+        # {"name": "Offer Count 72h", "id": "offer_count_72h", "type": "numeric"},
+        # {"name": "Accepted Count 72h", "id": "num_actual_ticketed_72h", "type": "numeric"},
         {"name": "Expired Count 72h", "id": "num_actual_expired_72h", "type": "numeric"},
         {"name": "BSP Expired 72h", "id": "expiry_72h", "type": "numeric"},
         {"name": "False -ve 72h", "id": "num_wrongly_expired_72h", "type": "numeric"},
-        {"name": "Accuracy 72h", "id": "negative_precision_72h", "type": "numeric", "format": percentage},
+        {"name": "Precision 72h", "id": "negative_precision_72h", "type": "numeric", "format": percentage},
         {"name": "True +ve 72h", "id": "negative_recall_72h", "type": "numeric", "format": percentage},
     ],
     48: [
-        {"name": "Offers 48h ($)", "id": "offers_usd_48h", "type": "numeric", "format": money},
-        {"name": "Upgrades 48h ($)", "id": "upgrades_usd_48h", "type": "numeric", "format": money},
-        {"name": "Acceptance Rate 48h (%)", "id": "acceptance_rate_48h", "type": "numeric", "format": percentage},
-        {"name": "Offer Count 48h", "id": "offer_count_48h", "type": "numeric"},
-        {"name": "Accepted Count 48h", "id": "num_actual_ticketed_48h", "type": "numeric"},
+        # {"name": "Offer Count 48h", "id": "offer_count_48h", "type": "numeric"},
+        # {"name": "Accepted Count 48h", "id": "num_actual_ticketed_48h", "type": "numeric"},
         {"name": "Expired Count 48h", "id": "num_actual_expired_48h", "type": "numeric"},
         {"name": "BSP Expired 48h", "id": "expiry_48h", "type": "numeric"},
         {"name": "False -ve 48h", "id": "num_wrongly_expired_48h", "type": "numeric"},
-        {"name": "Accuracy 48h", "id": "negative_precision_48h", "type": "numeric", "format": percentage},
+        {"name": "Precision 48h", "id": "negative_precision_48h", "type": "numeric", "format": percentage},
         {"name": "True +ve 48h", "id": "negative_recall_48h", "type": "numeric", "format": percentage},
     ],
     24: [
-        {"name": "Offers 24h ($)", "id": "offers_usd_24h", "type": "numeric", "format": money},
-        {"name": "Upgrades 24h ($)", "id": "upgrades_usd_24h", "type": "numeric", "format": money},
-        {"name": "Acceptance Rate 24h (%)", "id": "acceptance_rate_24h", "type": "numeric", "format": percentage},
-        {"name": "Offer Count 24h", "id": "offer_count_24h", "type": "numeric"},
-        {"name": "Accepted Count 24h", "id": "num_actual_ticketed_24h", "type": "numeric"},
+        # {"name": "Offer Count 24h", "id": "offer_count_24h", "type": "numeric"},
+        # {"name": "Accepted Count 24h", "id": "num_actual_ticketed_24h", "type": "numeric"},
         {"name": "Expired Count 24h", "id": "num_actual_expired_24h", "type": "numeric"},
         {"name": "BSP Expired 24h", "id": "expiry_24h", "type": "numeric"},
         {"name": "False -ve 24h", "id": "num_wrongly_expired_24h", "type": "numeric"},
-        {"name": "Accuracy 24h", "id": "negative_precision_24h", "type": "numeric", "format": percentage},
+        {"name": "Precision 24h", "id": "negative_precision_24h", "type": "numeric", "format": percentage},
         {"name": "True +ve 24h", "id": "negative_recall_24h", "type": "numeric", "format": percentage},
     ],
 }

@@ -792,7 +792,7 @@ def main():  # pragma: no cover - manual entry point
     app = create_app()
     # app.run_server(debug=True)
     port = int(os.getenv("PORT", 8000))  # App Runner passes a PORT sometimes, but default is fine
-    app.run_server(host="0.0.0.0", port=port, debug=False)
+    app.run_server(host="0.0.0.0", port=port, debug=False, dev_tools_silence_routes_logging=True)
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI guard

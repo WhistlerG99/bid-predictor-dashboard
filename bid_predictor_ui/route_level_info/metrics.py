@@ -1,5 +1,7 @@
 # metrics.py
 import pandas as pd
+import numpy as np
+
 
 HORIZONS = {
     "72h": 72,
@@ -125,22 +127,23 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
         snap_df["actual_expired"] = snap_df["offer_status"] == "EXPIRED"
         snap_df["predicted_expired"] = snap_df["accept_prob"] < threshold
 
-        offers_usd = snap_df["usd_base_amount"].sum()
-        upgrades_usd = snap_df[snap_df.actual_ticketed]["usd_base_amount"].sum()
-
-        acceptance_rate = (
-            upgrades_usd / offers_usd if offers_usd else 0.0
-        )
+        offers_usd = (snap_df["usd_base_amount"]*snap_df["item_count"]).sum()
+        upgrades_usd = (snap_df[snap_df.actual_ticketed]["usd_base_amount"]*snap_df[snap_df.actual_ticketed]["item_count"]).sum()
 
         offer_count = len(snap_df)
         num_actual_ticketed = int(snap_df["actual_ticketed"].sum())
+
+        acceptance_rate = (
+            num_actual_ticketed / offer_count if offer_count else np.nan
+        )
+
         num_actual_expired = int(snap_df["actual_expired"].sum())
         num_model_expired = int(snap_df["predicted_expired"].sum())
         num_wrongly_expired = int(
             (snap_df["predicted_expired"] & snap_df["actual_ticketed"]).sum()
         )
         negative_precision = (
-            1 - (num_wrongly_expired / num_model_expired) if num_model_expired > 0 else 1.0
+            1 - (num_wrongly_expired / num_model_expired) if num_model_expired > 0 else np.nan
         )
         negative_recall = (
             int((snap_df["predicted_expired"] & snap_df["actual_expired"]).sum()) / num_actual_expired
