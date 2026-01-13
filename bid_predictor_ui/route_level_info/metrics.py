@@ -92,7 +92,7 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
                 "num_wrongly_expired": 0,
                 "negative_precision": 0.0,
                 "negative_recall": 0.0,
-                "num_unique_offers": 0,  # NEW
+                "num_unique_offers": 0,
             }
         return results
 
@@ -134,7 +134,7 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
         num_actual_ticketed = int(snap_df["actual_ticketed"].sum())
 
         acceptance_rate = (
-            num_actual_ticketed / offer_count if offer_count else np.nan
+            upgrades_usd / offers_usd if offers_usd else np.nan
         )
 
         num_actual_expired = int(snap_df["actual_expired"].sum())

@@ -157,6 +157,9 @@ def register_route_level_info_callbacks(app):
                 "upgrades_usd": round(upgrades_usd, 2),
                 "acceptance_rate": round(acceptance_rate, 4),
 
+                "total_submitted_offers": int(num_offers),
+                "total_upgraded_offers": int(num_upgrades),
+
                 # "offers_usd_72h": horizon["72h"]["offers_usd"],
                 # "offers_usd_48h": horizon["48h"]["offers_usd"],
                 # "offers_usd_24h": horizon["24h"]["offers_usd"],
