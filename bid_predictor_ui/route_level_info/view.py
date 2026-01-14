@@ -5,6 +5,49 @@ import os
 money = dash_table.FormatTemplate.money(2)
 percentage = dash_table.FormatTemplate.percentage(2).nully('NaN')
 
+# CSS for sorting indicators
+SORTING_STYLES = """
+<style>
+/* Make headers look clickable */
+.react-grid-HeaderCell {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.react-grid-HeaderCell:hover {
+    background-color: #e8e8e8;
+}
+
+/* Sorting indicator styles */
+.react-grid-HeaderCell.sortable::after {
+    content: '⇅';
+    opacity: 0.3;
+    margin-left: 4px;
+    font-size: 12px;
+}
+
+.react-grid-HeaderCell.sort-ascending::after {
+    content: '↑';
+    opacity: 1;
+    color: #2E86AB;
+    font-weight: bold;
+}
+
+.react-grid-HeaderCell.sort-descending::after {
+    content: '↓';
+    opacity: 1;
+    color: #2E86AB;
+    font-weight: bold;
+}
+
+/* Sorted column header highlight */
+.react-grid-HeaderCell.sorted {
+    background-color: #D9E8F7 !important;
+    font-weight: 600;
+}
+</style>
+"""
+
 BASE_COLUMNS = [
     {"name": "Route", "id": "route"},
     {"name": "Submitted Offers", "id": "total_submitted_offers", "type": "numeric"},
@@ -216,6 +259,9 @@ def build_route_level_info_tab():
 
                                         columns=BASE_COLUMNS + HORIZON_COLUMNS[72],
 
+                                        # Enable native sorting - users can click column headers
+                                        sort_action="native",
+
                                         # fixed_rows={'headers': True},
                                         fixed_columns={"headers": True, "data": 1},
 
@@ -252,7 +298,23 @@ def build_route_level_info_tab():
                                             "lineHeight": "1.5",
                                             "textAlign": "center",
                                             "verticalAlign": "middle",
+                                            "cursor": "pointer",
                                         },
+
+                                        style_header_conditional=[
+                                            {
+                                                "if": {
+                                                    "column_id": [
+                                                        "total_submitted_offers",
+                                                        "offers_usd",
+                                                        "total_upgraded_offers",
+                                                        "upgrades_usd",
+                                                        "acceptance_rate",
+                                                    ]
+                                                },
+                                                "backgroundColor": "#D9E8F7",
+                                            }
+                                        ],
 
                                         style_data={
                                             "borderBottom": "1px solid #eee",
@@ -272,7 +334,20 @@ def build_route_level_info_tab():
                                             {
                                                 'if': {'row_index': 'even'},
                                                 'backgroundColor': 'white' # Or another color for even rows
-                                            }                                            
+                                            },
+                                            # {
+                                            #     "if": {
+                                            #         "column_id": [
+                                            #             "total_submitted_offers",
+                                            #             "offers_usd",
+                                            #             "total_upgraded_offers",
+                                            #             "upgrades_usd",
+                                            #             "acceptance_rate",
+                                            #         ]
+                                            #     },
+                                            #     "backgroundColor": "#F6F9FC",
+                                            #     "fontWeight": "500",
+                                            # },                                      
                                         ],
                                         page_action="none"
                                     ),

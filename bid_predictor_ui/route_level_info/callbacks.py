@@ -1,3 +1,4 @@
+from datetime import datetime
 from dash import Input, Output, State
 import pandas as pd
 import numpy as np
@@ -72,6 +73,44 @@ def register_route_level_info_callbacks(app):
         return BASE_COLUMNS + HORIZON_COLUMNS[selected_horizon]
 
     @app.callback(
+        Output("routes-table", "style_header_conditional"),
+        Input("routes-table", "sort_by"),
+    )
+    def update_header_style(sort_by):
+        """Highlight and add arrows to the sorted column header"""
+        style_header_conditional = [
+            {
+                "if": {
+                    "column_id": [
+                        "total_submitted_offers",
+                        "offers_usd",
+                        "total_upgraded_offers",
+                        "upgrades_usd",
+                        "acceptance_rate",
+                    ]
+                },
+                "backgroundColor": "#D9E8F7",
+            }
+        ]
+        
+        # Add highlighting for sorted columns
+        if sort_by and len(sort_by) > 0:
+            for sort_item in sort_by:
+                col_id = sort_item.get("column_id")
+                direction = sort_item.get("direction", "asc")
+                
+                if col_id:
+                    arrow = "↑ " if direction == "asc" else "↓ "
+                    style_header_conditional.append({
+                        "if": {"column_id": col_id},
+                        "backgroundColor": "#2E86AB",
+                        "color": "white",
+                        "fontWeight": "700",
+                    })
+        
+        return style_header_conditional
+
+    @app.callback(
         Output("routes-table", "data"),
         Input("carrier-dropdown", "value"),
         State("audit-data-store", "data"),
@@ -106,23 +145,70 @@ def register_route_level_info_callbacks(app):
         if "accept_prob_timestamp" in df.columns:
             df["accept_prob_timestamp"] = pd.to_datetime(df["accept_prob_timestamp"])
 
+        # Print raw data range before filtering
+        if "departure_timestamp" in df.columns:
+            min_departure_raw = df["departure_timestamp"].min()
+            max_departure_raw = df["departure_timestamp"].max()
+            print(f"[DATA BEFORE FILTER] Carrier: {carrier}, Min departure: {min_departure_raw}, Max departure: {max_departure_raw}, Total rows: {len(df)}")
+
+        # Apply 7-day departure_timestamp filter: yesterday back to 7 days ago
+        if "departure_timestamp" in df.columns:
+            from datetime import timedelta, time as dt_time
+            today = datetime.utcnow().date()
+            end_date = today - timedelta(days=1)  # Yesterday
+            start_date = end_date - timedelta(days=6)  # 7 days total
+            
+            end_ts = datetime.combine(end_date, dt_time.max)  # 23:59:59
+            start_ts = datetime.combine(start_date, dt_time.min)  # 00:00:00
+            
+            print(f"[DEPARTURE FILTER APPLIED] Carrier: {carrier}, Filter range: {start_ts} to {end_ts}")
+            
+            rows_before = len(df)
+            df = df[(df["departure_timestamp"] >= start_ts) & (df["departure_timestamp"] <= end_ts)]
+            rows_after = len(df)
+            rows_dropped = rows_before - rows_after
+            
+            print(f"[DEPARTURE FILTER RESULT] Rows before: {rows_before}, Rows after: {rows_after}, Rows dropped: {rows_dropped} ({100*rows_dropped/rows_before:.1f}%)" if rows_before > 0 else f"[DEPARTURE FILTER RESULT] No rows to filter")
+
+        if df.empty:
+            print(f"[WARNING] Carrier {carrier} has no data after departure_timestamp filter")
+            return []
+
+        # Print filtered data range
+        if "departure_timestamp" in df.columns:
+            min_departure_filtered = df["departure_timestamp"].min()
+            max_departure_filtered = df["departure_timestamp"].max()
+            print(f"[DATA AFTER FILTER] Carrier: {carrier}, Min departure: {min_departure_filtered}, Max departure: {max_departure_filtered}, Total rows: {len(df)}")
+            print(f"[7-DAY VERIFICATION] Carrier: {carrier}, Working with 7-day window data ONLY - from {min_departure_filtered.date()} to {max_departure_filtered.date()}")
+
         # Route key
         df["route"] = df["origination_code"] + "-" + df["destination_code"]
 
         # 3️⃣ Load offer status (cached / Redshift)
+        print(f"[LOADING OFFER STATUS] Carrier: {carrier}, Fetching status for {len(df['offer_id'].dropna().unique())} unique offer IDs")
         offer_ids = df["offer_id"].dropna().unique().tolist()
         status_df = load_offer_statuses_cached(offer_ids)
+        print(f"[OFFER STATUS LOADED] Carrier: {carrier}, Got status for {len(status_df)} offers")
 
         df = df.merge(status_df, on="offer_id", how="left")
+        print(f"[MERGE COMPLETE] Carrier: {carrier}, Merged dataframe has {len(df)} rows")
 
         rows = []
+        print(f"[STARTING ROUTE GROUPING] Carrier: {carrier}, Grouping {len(df)} rows by route")
 
         for route, route_df in df.groupby("route"):
+            # print(f"[PROCESSING ROUTE] Carrier: {carrier}, Route: {route}, Rows: {len(route_df)}")
+
+            route_df_non_cancelled = route_df[
+                route_df["offer_status"] != "CANCELLED"
+            ]
+            # print(f"[ROUTE FILTERED] Carrier: {carrier}, Route: {route}, After removing CANCELLED: {len(route_df_non_cancelled)} rows")
+
 
             # --- Business / revenue metrics ---
             # These intentionally use final state per offer
             final_state = (
-                route_df.sort_values("accept_prob_timestamp")
+                route_df_non_cancelled.sort_values("accept_prob_timestamp")
                         .groupby("offer_id", as_index=False)
                         .last()
             )
@@ -137,13 +223,13 @@ def register_route_level_info_callbacks(app):
                 ["TICKETED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY"]
             )
 
-            offers_usd = (valid_final["usd_base_amount"]*valid_final["item_count"]).sum()
+            offers_usd = (final_state["usd_base_amount"]*final_state["item_count"]).sum()
             upgrades_usd = (valid_final["usd_base_amount"]*valid_final["item_count"]).loc[accepted_mask].sum()
             
-            num_offers = len(valid_final)
+            num_offers = len(final_state)
             num_upgrades = len(valid_final.loc[accepted_mask])
             acceptance_rate = (
-                num_upgrades / num_offers if num_offers else np.nan
+                upgrades_usd / offers_usd if offers_usd else np.nan
             )
 
             # --- NOTEBOOK-ALIGNED SNAPSHOT METRICS ---
@@ -204,16 +290,20 @@ def register_route_level_info_callbacks(app):
                 "negative_recall_24h": horizon["24h"]["negative_recall"],
             })
 
+        print(f"[ROUTES LOOP COMPLETE] Carrier: {carrier}, Built {len(rows)} route rows")
+        
         rows_df = pd.DataFrame(rows)
+        print(f"[DATAFRAME CREATED] Carrier: {carrier}, DataFrame shape: {rows_df.shape}")
 
-        # Sort routes by 72h offer volume (closest to decision point)
-        rows_df = rows_df.sort_values(
-            "offer_count_72h", ascending=False
-        )
+        # No automatic sorting - users can sort by clicking column headers
+        print(f"[DATA READY FOR DISPLAY] Carrier: {carrier}, Total routes: {len(rows_df)}, sorted by insertion order")
 
         rows = rows_df.to_dict("records")
+        print(f"[CONVERTED TO RECORDS] Carrier: {carrier}, Ready to cache {len(rows)} records")
 
-        # 4️⃣ Cache computed route metrics
+        # 4️⃣ Cache computed route metrics (in insertion order)
         set_cached_route_metrics(carrier, threshold, rows)
+        print(f"[CACHE STORED] Carrier: {carrier}, Metrics cached for {len(rows)} routes")
 
+        print(f"[RETURNING RESULTS] Carrier: {carrier}, Returning {len(rows)} rows to display - users can sort by clicking column headers")
         return rows

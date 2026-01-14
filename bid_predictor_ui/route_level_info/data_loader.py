@@ -38,16 +38,17 @@ def _parse_timestamp_from_name(name: str) -> datetime | None:
 
 
 def _compute_window() -> tuple[datetime, datetime]:
-    """
+    """da
     today - 5 days = anchor
     window = [anchor - DAYS, anchor]
+    This window is used for fetching S3 files based on their filenames
     """
     today = datetime.utcnow().date()
     anchor_day = today - timedelta(days=5)
     start_day = anchor_day - timedelta(days=DAYS)
     start_ts = datetime.combine(start_day, dt_time.min)
     end_ts = datetime.combine(anchor_day, dt_time.max)
-    print(f'Start date: {start_ts}, End date: {end_ts}')
+    print(f'[DATA LOADER S3 FETCH WINDOW] Start date: {start_ts}, End date: {end_ts}')
     return start_ts, end_ts
 
 

@@ -76,7 +76,7 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
     Compute metrics per horizon, including total unique offer IDs.
     """
     results = {}
-
+    df_non_cancelled = df[df["offer_status"] != "CANCELLED"]
     df = df[df["offer_status"].isin(["TICKETED", "EXPIRED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY"])]
 
     if df.empty:
@@ -98,8 +98,9 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
 
     for label, target_hours in HORIZONS.items():
         snap_df = _select_nearest_snapshot(df, target_hours)
+        snap_df_nc = _select_nearest_snapshot(df_non_cancelled, target_hours)
 
-        if snap_df.empty:
+        if snap_df.empty or snap_df_nc.empty:
             results[label] = {
                 "offers_usd": 0.0,
                 "upgrades_usd": 0.0,
@@ -111,12 +112,18 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
                 "num_wrongly_expired": 0,
                 "negative_precision": 0.0,
                 "negative_recall": 0.0,
-                "num_unique_offers": 0,  # NEW
+                "num_unique_offers": 0,
             }
             continue
 
         snap_df = (
             snap_df.sort_values("current_timestamp")
+            .groupby("offer_id", as_index=False)
+            .last()
+        )
+
+        snap_df_nc = (
+            snap_df_nc.sort_values("current_timestamp")
             .groupby("offer_id", as_index=False)
             .last()
         )
@@ -127,10 +134,10 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
         snap_df["actual_expired"] = snap_df["offer_status"] == "EXPIRED"
         snap_df["predicted_expired"] = snap_df["accept_prob"] < threshold
 
-        offers_usd = (snap_df["usd_base_amount"]*snap_df["item_count"]).sum()
+        offers_usd = (snap_df_nc["usd_base_amount"]*snap_df_nc["item_count"]).sum()
         upgrades_usd = (snap_df[snap_df.actual_ticketed]["usd_base_amount"]*snap_df[snap_df.actual_ticketed]["item_count"]).sum()
 
-        offer_count = len(snap_df)
+        offer_count = len(snap_df_nc)
         num_actual_ticketed = int(snap_df["actual_ticketed"].sum())
 
         acceptance_rate = (
