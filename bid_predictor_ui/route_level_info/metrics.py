@@ -154,7 +154,7 @@ def compute_bucket_metrics(df: pd.DataFrame, threshold: float) -> dict:
         )
         negative_recall = (
             int((snap_df["predicted_expired"] & snap_df["actual_expired"]).sum()) / num_actual_expired
-            if num_actual_expired > 0 else 1.0
+            if num_actual_expired > 0 else np.nan
         )
 
         results[label] = {

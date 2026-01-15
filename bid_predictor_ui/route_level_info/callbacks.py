@@ -7,6 +7,7 @@ import os
 from .data_loader import load_audit_data_cached
 from .redshift_loader import load_offer_statuses_cached
 from .metrics import compute_bucket_metrics
+from .route_offer_revenue_cache import get_cached_route_offer_revenue
 
 from .view import BASE_COLUMNS, HORIZON_COLUMNS
 
@@ -196,17 +197,17 @@ def register_route_level_info_callbacks(app):
         rows = []
         print(f"[STARTING ROUTE GROUPING] Carrier: {carrier}, Grouping {len(df)} rows by route")
 
-        for route, route_df in df.groupby("route"):
-            # print(f"[PROCESSING ROUTE] Carrier: {carrier}, Route: {route}, Rows: {len(route_df)}")
+        route_revenue_map = get_cached_route_offer_revenue(
+            carrier=carrier,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
+        for route, route_df in df.groupby("route"):
             route_df_non_cancelled = route_df[
                 route_df["offer_status"] != "CANCELLED"
             ]
-            # print(f"[ROUTE FILTERED] Carrier: {carrier}, Route: {route}, After removing CANCELLED: {len(route_df_non_cancelled)} rows")
 
-
-            # --- Business / revenue metrics ---
-            # These intentionally use final state per offer
             final_state = (
                 route_df_non_cancelled.sort_values("accept_prob_timestamp")
                         .groupby("offer_id", as_index=False)
@@ -223,16 +224,31 @@ def register_route_level_info_callbacks(app):
                 ["TICKETED", "CC_AUTH_DECLINED", "CC_AUTH_RETRY"]
             )
 
-            offers_usd = (final_state["usd_base_amount"]*final_state["item_count"]).sum()
-            upgrades_usd = (valid_final["usd_base_amount"]*valid_final["item_count"]).loc[accepted_mask].sum()
+            # offers_usd = (final_state["usd_base_amount"]*final_state["item_count"]).sum()
+            # upgrades_usd = (valid_final["usd_base_amount"]*valid_final["item_count"]).loc[accepted_mask].sum()
             
-            num_offers = len(final_state)
-            num_upgrades = len(valid_final.loc[accepted_mask])
+            # num_offers = len(final_state)
+            # num_upgrades = len(valid_final.loc[accepted_mask])
+
+            origination, destination = route.split("-")
+            route_key = (origination, destination)
+            route_revenue = route_revenue_map.get(route_key)
+
+            if route_revenue:
+                offers_usd = route_revenue["offers_usd"]
+                upgrades_usd = route_revenue["upgrades_usd"]
+                num_offers = route_revenue["offer_count"]
+                num_upgrades = route_revenue["num_actual_ticketed"]
+            else:
+                offers_usd = 0.0
+                upgrades_usd = 0.0
+                num_offers = 0
+                num_upgrades = 0
+
             acceptance_rate = (
                 upgrades_usd / offers_usd if offers_usd else np.nan
             )
 
-            # --- NOTEBOOK-ALIGNED SNAPSHOT METRICS ---
             horizon = compute_bucket_metrics(route_df, threshold)
 
             rows.append({
@@ -278,15 +294,15 @@ def register_route_level_info_callbacks(app):
 
                 # Wrongly expired + precision / recall
                 "num_wrongly_expired_72h": horizon["72h"]["num_wrongly_expired"],
-                "negative_precision_72h": horizon["72h"]["negative_precision"] if horizon["72h"]["negative_precision"] else "NaN",
+                "negative_precision_72h": horizon["72h"]["negative_precision"],
                 "negative_recall_72h": horizon["72h"]["negative_recall"],
 
                 "num_wrongly_expired_48h": horizon["48h"]["num_wrongly_expired"],
-                "negative_precision_48h": horizon["48h"]["negative_precision"] if horizon["48h"]["negative_precision"] else "NaN",
+                "negative_precision_48h": horizon["48h"]["negative_precision"],
                 "negative_recall_48h": horizon["48h"]["negative_recall"],
 
                 "num_wrongly_expired_24h": horizon["24h"]["num_wrongly_expired"],
-                "negative_precision_24h": horizon["24h"]["negative_precision"] if horizon["24h"]["negative_precision"] else "NaN",
+                "negative_precision_24h": horizon["24h"]["negative_precision"],
                 "negative_recall_24h": horizon["24h"]["negative_recall"],
             })
 
