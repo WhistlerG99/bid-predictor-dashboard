@@ -9,31 +9,31 @@ from ..utils.redis_client import get_redis_client
 CACHE_TTL_SECONDS = 24 * 3600
 
 
-def get_cached_route_metrics(carrier: str, threshold: float):
+def get_cached_route_metrics(carrier: str, threshold: float, period_days: int = 7):
     redis = get_redis_client()
     if not redis:
         return None
 
     start_ts, end_ts = _compute_window()
-    key = route_metrics_cache_key(start_ts, end_ts, carrier, threshold)
+    key = route_metrics_cache_key(start_ts, end_ts, carrier, threshold, period_days)
 
     cached = redis.get(key)
     if cached:
         data = pickle.loads(cached)
-        print(f"[ROUTE CACHE HIT] {carrier}")
+        print(f"[ROUTE CACHE HIT] {carrier}, period={period_days}d")
         return data
 
-    print(f"[ROUTE CACHE MISS] {carrier}")
+    print(f"[ROUTE CACHE MISS] {carrier}, period={period_days}d")
     return None
 
 
-def set_cached_route_metrics(carrier: str, threshold: float, rows: list[dict]):
+def set_cached_route_metrics(carrier: str, threshold: float, period_days: int, rows: list[dict]):
     redis = get_redis_client()
     if not redis:
         return
 
     start_ts, end_ts = _compute_window()
-    key = route_metrics_cache_key(start_ts, end_ts, carrier, threshold)
+    key = route_metrics_cache_key(start_ts, end_ts, carrier, threshold, period_days)
 
     redis.setex(
         key,
@@ -41,4 +41,4 @@ def set_cached_route_metrics(carrier: str, threshold: float, rows: list[dict]):
         pickle.dumps(rows),
     )
 
-    print(f"[ROUTE CACHE SET] {carrier} rows={len(rows)}")
+    print(f"[ROUTE CACHE SET] {carrier} period={period_days}d rows={len(rows)}")

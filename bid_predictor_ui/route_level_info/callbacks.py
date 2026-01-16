@@ -112,28 +112,46 @@ def register_route_level_info_callbacks(app):
         return style_header_conditional
 
     @app.callback(
+        Output("period-info-title", "children"),
+        Input("period-dropdown", "value"),
+    )
+    def update_period_info(period_days):
+        """Update the period info title when period dropdown changes"""
+        period_labels = {
+            7: "📊 Last 7 Days of data",
+            14: "📊 Last 14 Days of data",
+            21: "📊 Last 21 Days of data",
+            30: "📊 Last 30 Days of data",
+        }
+        return period_labels.get(period_days, "📊 Last 7 Days of data")
+
+    @app.callback(
         Output("routes-table", "data"),
         Input("carrier-dropdown", "value"),
+        Input("period-dropdown", "value"),
         State("audit-data-store", "data"),
     )
-    def update_routes_table(carrier, data):
+    def update_routes_table(carrier, period_days, data):
         if not carrier:
             return []
 
         # Get carrier-specific threshold
         threshold = get_threshold_for_carrier(carrier)
-        print(f"\n[ROUTES TABLE UPDATE] Carrier: {carrier}, Using threshold: {threshold:.2f}")
+        print(f"\n[ROUTES TABLE UPDATE] Carrier: {carrier}, Using threshold: {threshold:.2f}, Period: {period_days} days")
 
         # 1️⃣ Route metrics cache (carrier + threshold + window)
-        cached_rows = get_cached_route_metrics(carrier, threshold)
+        cached_rows = get_cached_route_metrics(carrier, threshold, period_days)
         if cached_rows is not None:
-            print(f"[ROUTES TABLE] Cache HIT for {carrier} with threshold {threshold:.2f}")
+            print(f"[ROUTES TABLE] Cache HIT for {carrier} with threshold {threshold:.2f} and period {period_days} days")
             return cached_rows
 
         print(f"[ROUTES TABLE] Cache MISS for {carrier}, computing metrics with threshold {threshold:.2f}")
 
         # 2️⃣ Load raw audit data (server-side)
-        df = load_audit_data_cached()
+        # Convert period_days (7, 14, 21, 30) to S3 fetch days parameter
+        # period_days = lookback_days + 1, so days = period_days - 1
+        s3_days_param = period_days - 1
+        df = load_audit_data_cached(days=s3_days_param)
         df = df[df["carrier_code"] == carrier]
 
         if df.empty:
@@ -152,17 +170,19 @@ def register_route_level_info_callbacks(app):
             max_departure_raw = df["departure_timestamp"].max()
             print(f"[DATA BEFORE FILTER] Carrier: {carrier}, Min departure: {min_departure_raw}, Max departure: {max_departure_raw}, Total rows: {len(df)}")
 
-        # Apply 7-day departure_timestamp filter: yesterday back to 7 days ago
+        # Apply dynamic departure_timestamp filter based on selected period
         if "departure_timestamp" in df.columns:
             from datetime import timedelta, time as dt_time
             today = datetime.utcnow().date()
             end_date = today - timedelta(days=1)  # Yesterday
-            start_date = end_date - timedelta(days=6)  # 7 days total
+            # period_days is user-selected (7, 14, 21, 30), convert to lookback days
+            lookback_days = period_days - 1
+            start_date = end_date - timedelta(days=lookback_days)
             
             end_ts = datetime.combine(end_date, dt_time.max)  # 23:59:59
             start_ts = datetime.combine(start_date, dt_time.min)  # 00:00:00
             
-            print(f"[DEPARTURE FILTER APPLIED] Carrier: {carrier}, Filter range: {start_ts} to {end_ts}")
+            print(f"[DEPARTURE FILTER APPLIED] Carrier: {carrier}, Period: {period_days} days, Filter range: {start_ts} to {end_ts}")
             
             rows_before = len(df)
             df = df[(df["departure_timestamp"] >= start_ts) & (df["departure_timestamp"] <= end_ts)]
@@ -180,7 +200,7 @@ def register_route_level_info_callbacks(app):
             min_departure_filtered = df["departure_timestamp"].min()
             max_departure_filtered = df["departure_timestamp"].max()
             print(f"[DATA AFTER FILTER] Carrier: {carrier}, Min departure: {min_departure_filtered}, Max departure: {max_departure_filtered}, Total rows: {len(df)}")
-            print(f"[7-DAY VERIFICATION] Carrier: {carrier}, Working with 7-day window data ONLY - from {min_departure_filtered.date()} to {max_departure_filtered.date()}")
+            print(f"[PERIOD VERIFICATION] Carrier: {carrier}, Working with {period_days}-day window data - from {min_departure_filtered.date()} to {max_departure_filtered.date()}")
 
         # Route key
         df["route"] = df["origination_code"] + "-" + df["destination_code"]
@@ -201,6 +221,7 @@ def register_route_level_info_callbacks(app):
             carrier=carrier,
             start_date=start_date,
             end_date=end_date,
+            period_days=period_days,
         )
 
         for route, route_df in df.groupby("route"):
@@ -318,8 +339,8 @@ def register_route_level_info_callbacks(app):
         print(f"[CONVERTED TO RECORDS] Carrier: {carrier}, Ready to cache {len(rows)} records")
 
         # 4️⃣ Cache computed route metrics (in insertion order)
-        set_cached_route_metrics(carrier, threshold, rows)
-        print(f"[CACHE STORED] Carrier: {carrier}, Metrics cached for {len(rows)} routes")
+        set_cached_route_metrics(carrier, threshold, period_days, rows)
+        print(f"[CACHE STORED] Carrier: {carrier}, Period: {period_days}d, Metrics cached for {len(rows)} routes")
 
         print(f"[RETURNING RESULTS] Carrier: {carrier}, Returning {len(rows)} rows to display - users can sort by clicking column headers")
         return rows

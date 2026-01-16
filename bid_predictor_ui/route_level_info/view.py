@@ -127,6 +127,19 @@ def build_route_level_info_tab():
                                 placeholder="Select carrier",
                                 clearable=False,
                             ),
+                            html.Label("Data Period", style={"marginTop": "6px", "display": "block"}),
+                            dcc.Dropdown(
+                                id="period-dropdown",
+                                style={"marginTop": "2px"},
+                                options=[
+                                    {"label": "1 Week (7 days)", "value": 7},
+                                    {"label": "2 Weeks (14 days)", "value": 14},
+                                    {"label": "3 Weeks (21 days)", "value": 21},
+                                    {"label": "1 Month (30 days)", "value": 30},
+                                ],
+                                value=7,  # default to 1 week
+                                clearable=False,
+                            ),
                             html.Label("Hours before departure", style={"marginTop": "6px", "display": "block"}),
                             dcc.Dropdown(
                                 id="horizon-dropdown",
@@ -154,7 +167,7 @@ def build_route_level_info_tab():
                                 children=[
                                     html.Hr(style={"margin": "10px 0"}),  # subtle separator
                                     html.H4(
-                                        "📊 Last 7 Days of data",
+                                        id="period-info-title",
                                         style={
                                             "textAlign": "center",
                                             "color": "#2E86AB",

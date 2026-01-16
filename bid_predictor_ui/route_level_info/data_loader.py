@@ -37,18 +37,27 @@ def _parse_timestamp_from_name(name: str) -> datetime | None:
     return datetime.strptime(match.group("ts"), "%Y-%m-%dT%H-%M-%S")
 
 
-def _compute_window() -> tuple[datetime, datetime]:
-    """da
+def _compute_window(days: int = DAYS) -> tuple[datetime, datetime]:
+    """
+    Compute a time window for fetching S3 files.
+    
+    Default behavior (days=DAYS, which is 6):
     today - 5 days = anchor
-    window = [anchor - DAYS, anchor]
+    window = [anchor - DAYS, anchor] = [today - 11, today - 5] = 7 days total
+    
+    For custom periods:
+    - 14 days: days=13 → window = [today - 18, today - 5] = 14 days
+    - 21 days: days=20 → window = [today - 25, today - 5] = 21 days
+    - 30 days: days=29 → window = [today - 34, today - 5] = 30 days
+    
     This window is used for fetching S3 files based on their filenames
     """
     today = datetime.utcnow().date()
     anchor_day = today - timedelta(days=5)
-    start_day = anchor_day - timedelta(days=DAYS)
+    start_day = anchor_day - timedelta(days=days)
     start_ts = datetime.combine(start_day, dt_time.min)
     end_ts = datetime.combine(anchor_day, dt_time.max)
-    print(f'[DATA LOADER S3 FETCH WINDOW] Start date: {start_ts}, End date: {end_ts}')
+    print(f'[DATA LOADER S3 FETCH WINDOW] Start date: {start_ts}, End date: {end_ts}, Days: {days}')
     return start_ts, end_ts
 
 
@@ -113,9 +122,9 @@ def _load_audit_data_from_s3(start_ts: datetime, end_ts: datetime) -> pd.DataFra
     return combined_df
 
 
-def load_audit_data_cached() -> pd.DataFrame:
+def load_audit_data_cached(days: int = DAYS) -> pd.DataFrame:
     redis_client = get_redis_client()
-    start_ts, end_ts = _compute_window()
+    start_ts, end_ts = _compute_window(days=days)
     cache_key = audit_raw_cache_key(start_ts, end_ts)
 
     start = time.time()

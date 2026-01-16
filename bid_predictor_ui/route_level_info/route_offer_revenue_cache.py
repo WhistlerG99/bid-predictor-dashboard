@@ -10,8 +10,8 @@ from ..utils.redis_client import get_redis_client
 CACHE_TTL_SECONDS = 24 * 3600
 
 
-def _cache_key(carrier: str, start_date: date, end_date: date) -> str:
-    return f"route_offer_revenue:{carrier}:{start_date}:{end_date}"
+def _cache_key(carrier: str, start_date: date, end_date: date, period_days: int = 7) -> str:
+    return f"route_offer_revenue:{carrier}:{start_date}:{end_date}:period={period_days}d"
 
 
 def get_cached_route_offer_revenue(
@@ -19,6 +19,7 @@ def get_cached_route_offer_revenue(
     carrier: str,
     start_date: date,
     end_date: date,
+    period_days: int = 7,
 ) -> Dict[Tuple[str, str], dict]:
     """
     {
@@ -32,13 +33,15 @@ def get_cached_route_offer_revenue(
     """
 
     redis = get_redis_client()
-    key = _cache_key(carrier, start_date, end_date)
+    key = _cache_key(carrier, start_date, end_date, period_days)
 
     cached = redis.get(key)
     if cached:
         raw = json.loads(cached)
+        print(f"[ROUTE REVENUE CACHE HIT] {carrier} period={period_days}d")
         return {(k.split("|")[0], k.split("|")[1]): v for k, v in raw.items()}
 
+    print(f"[ROUTE REVENUE CACHE MISS] {carrier} period={period_days}d, fetching from Redshift")
     df = load_offers_with_usd_amount(
         start_date=start_date,
         end_date=end_date,
@@ -46,6 +49,7 @@ def get_cached_route_offer_revenue(
     )
 
     if df.empty:
+        print(f"[ROUTE REVENUE CACHE] No data from Redshift for {carrier} period={period_days}d")
         redis.setex(key, CACHE_TTL_SECONDS, json.dumps({}))
         return {}
 
@@ -69,5 +73,6 @@ def get_cached_route_offer_revenue(
             ),
         }
 
+    print(f"[ROUTE REVENUE CACHE SET] {carrier} period={period_days}d routes={len(result)}")
     redis.setex(key, CACHE_TTL_SECONDS, json.dumps(result))
     return {(k.split("|")[0], k.split("|")[1]): v for k, v in result.items()}

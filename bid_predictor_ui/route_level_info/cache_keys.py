@@ -8,9 +8,10 @@ def route_metrics_cache_key(
     end: datetime,
     carrier: str,
     threshold: float,
+    period_days: int = 7,
 ) -> str:
     return (
         f"audit:routes:{carrier}:"
         f"{start:%Y-%m-%d}:{end:%Y-%m-%d}:"
-        f"thr={threshold:.2f}"
+        f"thr={threshold:.2f}:period={period_days}d"
     )
