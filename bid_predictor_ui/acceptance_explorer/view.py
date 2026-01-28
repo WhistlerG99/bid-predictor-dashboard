@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence
 
 import pandas as pd
-from dash import Dash, Input, Output, State, html, no_update
+from dash import Dash, Input, Output, State, dcc, html, no_update
 from dotenv import load_dotenv
 
 from ..dropdowns import choose_dropdown_value, options_from_series
@@ -291,6 +291,25 @@ def _render_table(
         {"if": {"row_index": "even"}, "backgroundColor": "#ffffff"}
     )
     return columns, data_rows, style_rules
+
+
+def _build_download_dataframe(
+    table_data: Optional[Sequence[Mapping[str, object]]],
+    columns: Optional[Sequence[Mapping[str, object]]],
+) -> pd.DataFrame:
+    if not table_data or not columns:
+        return pd.DataFrame()
+    column_ids = [column.get("id") for column in columns if column.get("id")]
+    df = pd.DataFrame(list(table_data))
+    if column_ids:
+        df = df[column_ids]
+        rename_map = {
+            column.get("id"): column.get("name", column.get("id"))
+            for column in columns
+            if column.get("id")
+        }
+        df = df.rename(columns=rename_map)
+    return df
 
 
 def register_acceptance_callbacks(app: Dash) -> None:
@@ -628,6 +647,29 @@ def register_acceptance_callbacks(app: Dash) -> None:
         )
 
         return summary, figure, warning, columns, data_rows, style_rules, ""
+
+    @app.callback(
+        Output("acceptance-download-data", "data"),
+        Input("acceptance-download-button", "n_clicks"),
+        State("acceptance-bid-table", "data"),
+        State("acceptance-bid-table", "columns"),
+        prevent_initial_call=True,
+    )
+    def download_table(
+        n_clicks: Optional[int],
+        table_data: Optional[List[Dict[str, object]]],
+        columns: Optional[List[Dict[str, object]]],
+    ):
+        if not n_clicks:
+            return no_update
+        df = _build_download_dataframe(table_data, columns)
+        if df.empty:
+            return no_update
+        return dcc.send_data_frame(
+            df.to_csv,
+            "acceptance-bids.csv",
+            index=False,
+        )
 
     register_selection_history_callbacks(
         app,

@@ -14,6 +14,29 @@ def _build_filter_card() -> html.Div:
 
     return html.Div(
         [
+            html.Div(
+                [
+                    html.Button(
+                        "⬇️",
+                        id="acceptance-download-button",
+                        title="download data",
+                        style={
+                            "backgroundColor": "#1b4965",
+                            "color": "#ffffff",
+                            "border": "none",
+                            "borderRadius": "8px",
+                            "width": "44px",
+                            "height": "44px",
+                            "fontSize": "1.2rem",
+                            "cursor": "pointer",
+                            "boxShadow": "0 2px 6px rgba(0, 0, 0, 0.12)",
+                        },
+                        aria_label="Download data",
+                    ),
+                    dcc.Download(id="acceptance-download-data"),
+                ],
+                style={"display": "flex", "justifyContent": "flex-start"},
+            ),
             build_random_selection_button("acceptance-random-selection-button"),
             build_selection_history_dropdown(
                 "acceptance-selection-history-dropdown"
