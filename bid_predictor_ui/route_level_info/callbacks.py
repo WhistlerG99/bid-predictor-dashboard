@@ -1,5 +1,5 @@
 from datetime import datetime
-from dash import Input, Output, State, html
+from dash import Input, Output, State, html, dcc, no_update
 import pandas as pd
 import numpy as np
 import os
@@ -547,3 +547,31 @@ def register_route_level_info_callbacks(app):
         except Exception as e:
             print(f"[SUMMARY STATS ERROR] {str(e)}")
             return html.P(f"Error calculating summary: {str(e)}", style={"textAlign": "center", "color": "red"}), None
+
+    @app.callback(
+        Output("routes-table-download", "data"),
+        Input("routes-table-download-button", "n_clicks"),
+        State("routes-table", "data"),
+        State("routes-table", "columns"),
+        State("carrier-dropdown", "value"),
+        State("period-dropdown", "value"),
+        State("horizon-dropdown", "value"),
+        prevent_initial_call=True,
+    )
+    def download_routes_table(n_clicks, table_data, columns, carrier, period_days, horizon_hours):
+        if not n_clicks or not table_data:
+            return no_update
+
+        df = pd.DataFrame(table_data)
+        if columns:
+            column_ids = [col["id"] for col in columns if "id" in col]
+            column_names = {col["id"]: col.get("name", col["id"]) for col in columns if "id" in col}
+            df = df.reindex(columns=column_ids)
+            df = df.rename(columns=column_names)
+
+        safe_carrier = (carrier or "all").lower()
+        safe_period = f"{period_days}d" if period_days else "period"
+        safe_horizon = f"{horizon_hours}h" if horizon_hours else "hours"
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        filename = f"bsp-route-metrics-{safe_carrier}-{safe_period}-{safe_horizon}-{timestamp}.csv"
+        return dcc.send_data_frame(df.to_csv, filename, index=False)

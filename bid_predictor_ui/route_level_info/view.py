@@ -94,6 +94,7 @@ def build_route_level_info_tab():
         children=[
             dcc.Store(id="audit-data-store"),
             dcc.Store(id="summary-stats-store"),
+            dcc.Download(id="routes-table-download"),
 
             dcc.Interval(
                 id="audit-loader-once",
@@ -163,6 +164,31 @@ def build_route_level_info_tab():
                                     "padding": "6px 10px",
                                     "display": "inline-block",
                                 },
+                            ),
+                            html.Div(
+                                style={
+                                    "marginTop": "10px",
+                                    "display": "flex",
+                                    "justifyContent": "flex-start",
+                                },
+                                children=[
+                                    html.Button(
+                                        ["⬇️ ", html.Span("Download")],
+                                        id="routes-table-download-button",
+                                        title="download data",
+                                        style={
+                                            "border": "1px solid #2E86AB",
+                                            "backgroundColor": "#2E86AB",
+                                            "color": "white",
+                                            "borderRadius": "6px",
+                                            "padding": "6px 10px",
+                                            "cursor": "pointer",
+                                            "fontSize": "14px",
+                                            "width": "100%",
+                                        },
+                                        **{"aria-label": "download data"},
+                                    )
+                                ],
                             ),
                             html.Div(
                                 children=[
