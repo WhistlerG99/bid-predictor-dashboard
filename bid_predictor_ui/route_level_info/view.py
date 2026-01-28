@@ -173,7 +173,7 @@ def build_route_level_info_tab():
                                 },
                                 children=[
                                     html.Button(
-                                        "⬇️",
+                                        ["⬇️ ", html.Span("Download")],
                                         id="routes-table-download-button",
                                         title="download data",
                                         style={
@@ -184,6 +184,7 @@ def build_route_level_info_tab():
                                             "padding": "6px 10px",
                                             "cursor": "pointer",
                                             "fontSize": "14px",
+                                            "width": "100%",
                                         },
                                         **{"aria-label": "download data"},
                                     )
