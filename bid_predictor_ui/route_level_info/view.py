@@ -93,6 +93,7 @@ def build_route_level_info_tab():
         value="audit",
         children=[
             dcc.Store(id="audit-data-store"),
+            dcc.Store(id="summary-stats-store"),
 
             dcc.Interval(
                 id="audit-loader-once",
@@ -242,6 +243,40 @@ def build_route_level_info_tab():
                                             html.Li("Precision — Percentage of model expired offers that were truly expired"),
                                             html.Li("True +ve — Proportion of actually expired offers that the model successfully identifies as expired"),
                                         ],
+                                    ),
+                                ],
+                            ),
+
+                            # Summary Statistics Card
+                            html.Div(
+                                id="summary-stats-card",
+                                style={
+                                    "marginTop": "14px",
+                                    "padding": "10px",
+                                    "border": "1px solid #ccc",
+                                    "borderRadius": "6px",
+                                    "backgroundColor": "#E3F2FD",
+                                    "fontSize": "12px",
+                                    "lineHeight": "1.5",
+                                },
+                                children=[
+                                    html.H4(
+                                        "📊 Total Summary",
+                                        style={
+                                            "marginBottom": "8px",
+                                            "fontSize": "14px",
+                                            "fontWeight": "600",
+                                            "textAlign": "center",
+                                            "color": "#1565C0",
+                                        },
+                                    ),
+                                    html.Div(
+                                        id="summary-stats-content",
+                                        style={
+                                            "display": "grid",
+                                            "gridTemplateColumns": "1fr",
+                                            "gap": "6px",
+                                        },
                                     ),
                                 ],
                             ),

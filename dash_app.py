@@ -40,7 +40,12 @@ from bid_predictor_ui.data_sources import (
     _list_remote_files,
 )
 from bid_predictor_ui.route_level_info import (
-    build_route_level_info_tab,register_route_level_info_callbacks
+    build_route_level_info_tab,
+    register_route_level_info_callbacks,
+)
+from bid_predictor_ui.route_level_info.background_cache import (
+    start_background_cache_scheduler,
+    stop_background_cache_scheduler,
 )
 import bid_predictor_ui.data_sources as data_sources_module
 from bid_predictor_ui.acceptance_explorer.view import _normalize_acceptance_dataset
@@ -502,6 +507,11 @@ def create_app() -> Dash:
 
     # register_acceptance_callbacks(app)
     register_route_level_info_callbacks(app)
+    
+    # Start background cache scheduler
+    # Pre-fetches and caches data for all carriers and periods
+    # so users don't have to wait on first request
+    start_background_cache_scheduler(cache_update_hour=2, cache_update_minute=0)
     
     # Start background hourly refresh thread
     # if REDIS_URL and S3_DATASET_LISTING_URI:

@@ -1,13 +1,15 @@
 from datetime import datetime
-from dash import Input, Output, State
+from dash import Input, Output, State, html
 import pandas as pd
 import numpy as np
 import os
+import json
 
 from .data_loader import load_audit_data_cached
 from .redshift_loader import load_offer_statuses_cached
 from .metrics import compute_bucket_metrics
 from .route_offer_revenue_cache import get_cached_route_offer_revenue
+from ..utils.redis_client import get_redis_client
 
 from .view import BASE_COLUMNS, HORIZON_COLUMNS
 
@@ -15,6 +17,10 @@ from .route_metrics_cache import (
     get_cached_route_metrics,
     set_cached_route_metrics,
 )
+
+# Final results cache TTL (24 hours)
+FINAL_RESULTS_CACHE_TTL = 24 * 3600
+SUMMARY_STATS_CACHE_TTL = 24 * 3600  # Summary stats cache (24 hours)
 
 # Carrier-specific thresholds
 CARRIER_THRESHOLDS = {
@@ -139,10 +145,34 @@ def register_route_level_info_callbacks(app):
         threshold = get_threshold_for_carrier(carrier)
         print(f"\n[ROUTES TABLE UPDATE] Carrier: {carrier}, Using threshold: {threshold:.2f}, Period: {period_days} days")
 
+        # ✅ STEP 1: CHECK FINAL RESULTS CACHE FIRST (fastest!)
+        redis_client = get_redis_client()
+        final_cache_key = f"routes_table_final:{carrier}:threshold={threshold}:period={period_days}d"
+        
+        if redis_client:
+            try:
+                cached_final_result = redis_client.get(final_cache_key)
+                if cached_final_result:
+                    print(f"[ROUTES TABLE] 🚀 Final results cache HIT for {carrier} - instant result!")
+                    return json.loads(cached_final_result)
+            except Exception as e:
+                print(f"[ROUTES TABLE] Warning checking final cache: {str(e)}")
+
         # 1️⃣ Route metrics cache (carrier + threshold + window)
         cached_rows = get_cached_route_metrics(carrier, threshold, period_days)
         if cached_rows is not None:
-            print(f"[ROUTES TABLE] Cache HIT for {carrier} with threshold {threshold:.2f} and period {period_days} days")
+            print(f"[ROUTES TABLE] Route metrics cache HIT for {carrier} with threshold {threshold:.2f} and period {period_days} days")
+            # Cache the final result for next time
+            if redis_client:
+                try:
+                    redis_client.setex(
+                        final_cache_key,
+                        FINAL_RESULTS_CACHE_TTL,
+                        json.dumps(cached_rows)
+                    )
+                    print(f"[ROUTES TABLE] Stored final results in cache for {carrier}")
+                except Exception as e:
+                    print(f"[ROUTES TABLE] Warning caching final results: {str(e)}")
             return cached_rows
 
         print(f"[ROUTES TABLE] Cache MISS for {carrier}, computing metrics with threshold {threshold:.2f}")
@@ -342,5 +372,178 @@ def register_route_level_info_callbacks(app):
         set_cached_route_metrics(carrier, threshold, period_days, rows)
         print(f"[CACHE STORED] Carrier: {carrier}, Period: {period_days}d, Metrics cached for {len(rows)} routes")
 
+        # ✅ STEP 5: CACHE THE FINAL RESULTS (for instant future loads)
+        if redis_client:
+            try:
+                redis_client.setex(
+                    final_cache_key,
+                    FINAL_RESULTS_CACHE_TTL,
+                    json.dumps(rows)
+                )
+                print(f"[ROUTES TABLE] Stored final results in cache for {carrier} - {len(rows)} routes")
+            except Exception as e:
+                print(f"[ROUTES TABLE] Warning caching final results: {str(e)}")
+
         print(f"[RETURNING RESULTS] Carrier: {carrier}, Returning {len(rows)} rows to display - users can sort by clicking column headers")
         return rows
+
+    def cache_summary_stats(carrier, period_days, selected_horizon, summary_data):
+        """Helper function to cache summary statistics"""
+        redis_client = get_redis_client()
+        if not redis_client:
+            return
+        
+        try:
+            summary_cache_key = f"summary_stats:{carrier}:period={period_days}d:horizon={selected_horizon}h"
+            redis_client.setex(
+                summary_cache_key,
+                SUMMARY_STATS_CACHE_TTL,
+                json.dumps(summary_data)
+            )
+            print(f"[SUMMARY STATS] Cached summary for {carrier}, period {period_days}d, horizon {selected_horizon}h")
+        except Exception as e:
+            print(f"[SUMMARY STATS] Warning caching summary: {str(e)}")
+
+    @app.callback(
+        Output("summary-stats-content", "children"),
+        Output("summary-stats-store", "data"),
+        Input("routes-table", "data"),
+        Input("horizon-dropdown", "value"),
+        State("carrier-dropdown", "value"),
+        State("period-dropdown", "value"),
+    )
+    def update_summary_stats(table_data, selected_horizon, carrier, period_days):
+        """Calculate and display summary statistics from the routes table with caching"""
+        if not table_data:
+            return html.P("No data available", style={"textAlign": "center", "color": "#999"}), None
+
+        try:
+            df = pd.DataFrame(table_data)
+            
+            # Calculate totals for base metrics
+            total_submitted = df["total_submitted_offers"].sum()
+            total_offers_usd = df["offers_usd"].sum()
+            total_upgraded = df["total_upgraded_offers"].sum()
+            total_upgrades_usd = df["upgrades_usd"].sum()
+
+            # Calculate totals for selected horizon
+            horizon_columns = {
+                72: {"expired": "num_actual_expired_72h", "bsp": "expiry_72h", "false_neg": "num_wrongly_expired_72h"},
+                48: {"expired": "num_actual_expired_48h", "bsp": "expiry_48h", "false_neg": "num_wrongly_expired_48h"},
+                24: {"expired": "num_actual_expired_24h", "bsp": "expiry_24h", "false_neg": "num_wrongly_expired_24h"},
+            }
+            
+            horizon_cols = horizon_columns.get(selected_horizon, horizon_columns[72])
+            total_expired = df[horizon_cols["expired"]].sum() if horizon_cols["expired"] in df.columns else 0
+            total_bsp_expired = df[horizon_cols["bsp"]].sum() if horizon_cols["bsp"] in df.columns else 0
+            total_false_neg = df[horizon_cols["false_neg"]].sum() if horizon_cols["false_neg"] in df.columns else 0
+
+            # Format currency values
+            total_offers_formatted = f"${total_offers_usd:,.2f}"
+            total_upgrades_formatted = f"${total_upgrades_usd:,.2f}"
+
+            # Calculate Precision: 100% * (1 - (Total False -ve)/(Total BSP Expired))
+            precision = None
+            if total_bsp_expired > 0:
+                precision = 100 * (1 - (total_false_neg / total_bsp_expired))
+            
+            # Calculate True +ve: 100% * ((Total BSP Expired) - (Total False -ve))/(Total Expired Count)
+            true_positive = None
+            if total_expired > 0:
+                true_positive = 100 * ((total_bsp_expired - total_false_neg) / total_expired)
+
+            # Store summary data for caching
+            summary_data = {
+                "total_submitted": int(total_submitted),
+                "total_offers_usd": float(total_offers_usd),
+                "total_offers_formatted": total_offers_formatted,
+                "total_upgraded": int(total_upgraded),
+                "total_upgrades_usd": float(total_upgrades_usd),
+                "total_upgrades_formatted": total_upgrades_formatted,
+                "total_expired": int(total_expired),
+                "total_bsp_expired": int(total_bsp_expired),
+                "total_false_neg": int(total_false_neg),
+                "precision": precision,
+                "true_positive": true_positive,
+                "selected_horizon": selected_horizon,
+            }
+
+            # Cache the summary stats
+            cache_summary_stats(carrier, period_days, selected_horizon, summary_data)
+
+            content = [
+                html.Div(
+                    style={"display": "flex", "justifyContent": "space-between", "paddingBottom": "4px", "borderBottom": "1px solid #B0BEC5"},
+                    children=[
+                        html.Span("Total Submitted Offers:", style={"fontWeight": "500"}),
+                        html.Span(f"{int(total_submitted)}", style={"fontWeight": "600", "color": "#1565C0"}),
+                    ],
+                ),
+                html.Div(
+                    style={"display": "flex", "justifyContent": "space-between", "paddingBottom": "4px", "borderBottom": "1px solid #B0BEC5"},
+                    children=[
+                        html.Span("Total Offers ($):", style={"fontWeight": "500"}),
+                        html.Span(total_offers_formatted, style={"fontWeight": "600", "color": "#1565C0"}),
+                    ],
+                ),
+                html.Div(
+                    style={"display": "flex", "justifyContent": "space-between", "paddingBottom": "4px", "borderBottom": "1px solid #B0BEC5"},
+                    children=[
+                        html.Span("Total Upgraded Offers:", style={"fontWeight": "500"}),
+                        html.Span(f"{int(total_upgraded)}", style={"fontWeight": "600", "color": "#1565C0"}),
+                    ],
+                ),
+                html.Div(
+                    style={"display": "flex", "justifyContent": "space-between", "paddingBottom": "4px", "borderBottom": "1px solid #B0BEC5"},
+                    children=[
+                        html.Span("Total Upgrades ($):", style={"fontWeight": "500"}),
+                        html.Span(total_upgrades_formatted, style={"fontWeight": "600", "color": "#1565C0"}),
+                    ],
+                ),
+                html.Div(
+                    style={"display": "flex", "justifyContent": "space-between", "paddingBottom": "4px", "borderBottom": "1px solid #B0BEC5"},
+                    children=[
+                        html.Span(f"Total Expired Count ({selected_horizon}h):", style={"fontWeight": "500"}),
+                        html.Span(f"{int(total_expired)}", style={"fontWeight": "600", "color": "#1565C0"}),
+                    ],
+                ),
+                html.Div(
+                    style={"display": "flex", "justifyContent": "space-between", "paddingBottom": "4px", "borderBottom": "1px solid #B0BEC5"},
+                    children=[
+                        html.Span(f"Total BSP Expired ({selected_horizon}h):", style={"fontWeight": "500"}),
+                        html.Span(f"{int(total_bsp_expired)}", style={"fontWeight": "600", "color": "#1565C0"}),
+                    ],
+                ),
+                html.Div(
+                    style={"display": "flex", "justifyContent": "space-between", "paddingBottom": "4px", "borderBottom": "1px solid #B0BEC5"},
+                    children=[
+                        html.Span(f"Total False -ve ({selected_horizon}h):", style={"fontWeight": "500"}),
+                        html.Span(f"{int(total_false_neg)}", style={"fontWeight": "600", "color": "#D32F2F"}),
+                    ],
+                ),
+                html.Div(
+                    style={"display": "flex", "justifyContent": "space-between", "paddingBottom": "4px", "borderBottom": "1px solid #B0BEC5"},
+                    children=[
+                        html.Span(f"Precision ({selected_horizon}h):", style={"fontWeight": "500"}),
+                        html.Span(
+                            f"{precision:.2f}%" if precision is not None else "N/A",
+                            style={"fontWeight": "600", "color": "#1565C0"}
+                        ),
+                    ],
+                ),
+                html.Div(
+                    style={"display": "flex", "justifyContent": "space-between", "paddingTop": "4px"},
+                    children=[
+                        html.Span(f"True +ve ({selected_horizon}h):", style={"fontWeight": "500"}),
+                        html.Span(
+                            f"{true_positive:.2f}%" if true_positive is not None else "N/A",
+                            style={"fontWeight": "600", "color": "#1565C0"}
+                        ),
+                    ],
+                ),
+            ]
+
+            return content, summary_data
+        except Exception as e:
+            print(f"[SUMMARY STATS ERROR] {str(e)}")
+            return html.P(f"Error calculating summary: {str(e)}", style={"textAlign": "center", "color": "red"}), None
