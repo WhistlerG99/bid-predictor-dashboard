@@ -555,9 +555,10 @@ def register_route_level_info_callbacks(app):
         State("routes-table", "columns"),
         State("carrier-dropdown", "value"),
         State("period-dropdown", "value"),
+        State("horizon-dropdown", "value"),
         prevent_initial_call=True,
     )
-    def download_routes_table(n_clicks, table_data, columns, carrier, period_days):
+    def download_routes_table(n_clicks, table_data, columns, carrier, period_days, horizon_hours):
         if not n_clicks or not table_data:
             return no_update
 
@@ -568,7 +569,9 @@ def register_route_level_info_callbacks(app):
             df = df.reindex(columns=column_ids)
             df = df.rename(columns=column_names)
 
-        safe_carrier = carrier or "all"
+        safe_carrier = (carrier or "all").lower()
         safe_period = f"{period_days}d" if period_days else "period"
-        filename = f"route_level_{safe_carrier}_{safe_period}.csv"
+        safe_horizon = f"{horizon_hours}h" if horizon_hours else "hours"
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        filename = f"bsp-route-metrics-{safe_carrier}-{safe_period}-{safe_horizon}-{timestamp}.csv"
         return dcc.send_data_frame(df.to_csv, filename, index=False)
