@@ -190,6 +190,32 @@ def load_training_data(
             delta = data["departure_timestamp"] - data["current_timestamp"]
             data = data.loc[delta < cutoff].copy()
 
+    if "snapshot_num" not in data.columns and "current_timestamp" in data.columns:
+        print("Creating the Snapshot Index")
+        group_keys = [
+            key
+            for key in [
+                "carrier_code",
+                "flight_number",
+                "travel_date",
+                "upgrade_type",
+            ]
+            if key in data.columns
+        ]
+
+        if group_keys:
+            data["snapshot_num"] = (
+                data.groupby(group_keys)["current_timestamp"]
+                .rank(method='dense', ascending=True)
+                .astype(int)
+            )
+        else:
+            data["snapshot_num"] = (
+                data["current_timestamp"]
+                .rank(method='dense', ascending=True)
+                .astype(int)
+            )
+            
     return data
 
 
